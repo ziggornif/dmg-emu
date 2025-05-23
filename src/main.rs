@@ -9,7 +9,7 @@ fn main() {
 
     cpu.pc = 0x0100; // cartridge boot address
 
-    for _ in 0..10 {
+    for _ in 0..20 {
         step(&mut cpu, &memory);
     }
 
@@ -29,14 +29,14 @@ fn step(cpu: &mut CPU, memory: &Memory) {
 }
 
 fn load_program(memory: &mut Memory) {
-    memory.write_byte(0x0100, 0x3E);
-    memory.write_byte(0x0101, 0x42);
-    memory.write_byte(0x0102, 0x3C);
-    memory.write_byte(0x0103, 0x3C);
-    memory.write_byte(0x0104, 0x00);
-    memory.write_byte(0x0105, 0x00);
-    memory.write_byte(0x106, 0x06);
-    memory.write_byte(0x107, 0xFF);
-    memory.write_byte(0x108, 0x04);
-    memory.write_byte(0x109, 0x05);
+    memory.write_byte(0x0100, 0x3E); // LD A, n
+    memory.write_byte(0x0101, 0x05); // A = 5
+    memory.write_byte(0x0102, 0x06); // LD B, n
+    memory.write_byte(0x0103, 0x01); // B = 1
+    memory.write_byte(0x0104, 0x90); // SUB A, B
+    memory.write_byte(0x0105, 0x28); // JR Z, offset
+    memory.write_byte(0x0106, 0x02); // offset +2
+    memory.write_byte(0x0107, 0x18); // JR offset
+    memory.write_byte(0x0108, 0xFB); // offset -5
+    memory.write_byte(0x0109, 0x00); // NOP
 }
