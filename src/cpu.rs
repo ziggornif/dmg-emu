@@ -1,3 +1,5 @@
+use crate::memory::Memory;
+
 const FLAG_Z: u8 = 0b10000000; // Zero
 const FLAG_N: u8 = 0b01000000; // Subtraction
 const FLAG_H: u8 = 0b00100000; // Half Carry
@@ -79,6 +81,14 @@ impl CPU {
         (self.f & FLAG_C) != 0
     }
 
+    pub fn flag_n(&self) -> bool {
+        (self.f & FLAG_N) != 0
+    }
+
+    pub fn flag_h(&self) -> bool {
+        (self.f & FLAG_H) != 0
+    }
+
     pub fn set_flag_z(&mut self, value: bool) {
         if value {
             self.f |= FLAG_Z;
@@ -95,7 +105,23 @@ impl CPU {
         }
     }
 
-    pub fn execute_instruction(&mut self, opcode: u8) -> u8 {
+    pub fn set_flag_h(&mut self, value: bool) {
+        if value {
+            self.f |= FLAG_H;
+        } else {
+            self.f &= !FLAG_H;
+        }
+    }
+
+    pub fn set_flag_n(&mut self, value: bool) {
+        if value {
+            self.f |= FLAG_N;
+        } else {
+            self.f &= !FLAG_N;
+        }
+    }
+
+    pub fn execute_instruction(&mut self, opcode: u8, memory: &Memory) -> u8 {
         match opcode {
             0x00 => {
                 // NOP
@@ -103,13 +129,32 @@ impl CPU {
             }
             0x3E => {
                 // LD A, n - Load immediate value into A
-                self.a = 0x42; // TODO: use real memory value
+                self.pc += 1;
+                let value = memory.read_byte(self.pc);
+                self.a = value;
+                self.pc += 1;
                 8
             }
             0x06 => {
                 // LD B, n - Load immediate value into B
-                self.b = 0x10; // TODO: use real memory value
+                self.pc += 1;
+                let value = memory.read_byte(self.pc);
+                self.b = value;
+                self.pc += 1;
                 8
+            }
+            0x3C => {
+                // INC A - Increment A
+                let old_a = self.a;
+                let result = self.a.wrapping_add(1);
+                self.a = result;
+
+                // Update flags
+                self.set_flag_z(result == 0);
+                self.set_flag_n(false);
+                self.set_flag_h((old_a & 0x0F) == 0x0F);
+
+                4
             }
             _ => {
                 println!("Opcode not implemented: 0x{:02X}", opcode);
