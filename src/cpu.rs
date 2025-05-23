@@ -129,7 +129,6 @@ impl CPU {
             }
             0x3E => {
                 // LD A, n - Load immediate value into A
-                self.pc += 1;
                 let value = memory.read_byte(self.pc);
                 self.a = value;
                 self.pc += 1;
@@ -137,7 +136,6 @@ impl CPU {
             }
             0x06 => {
                 // LD B, n - Load immediate value into B
-                self.pc += 1;
                 let value = memory.read_byte(self.pc);
                 self.b = value;
                 self.pc += 1;
@@ -156,10 +154,291 @@ impl CPU {
 
                 4
             }
+            0x3D => {
+                // DEC A - Decrement A
+                let old_a = self.a;
+                let result = old_a.wrapping_sub(1);
+                self.a = result;
+
+                // Update flags
+                self.set_flag_z(result == 0);
+                self.set_flag_n(true);
+                self.set_flag_h((old_a & 0x0F) == 0x00);
+
+                4
+            }
+            0x04 => {
+                // INC B - Increment B
+                let old_b = self.b;
+                let result = self.b.wrapping_add(1);
+                self.b = result;
+
+                // Update flags
+                self.set_flag_z(result == 0);
+                self.set_flag_n(false);
+                self.set_flag_h((old_b & 0x0F) == 0x0F);
+
+                4
+            }
+
+            0x05 => {
+                // DEC B - Decrement B
+                let old_b = self.b;
+                let result = self.b.wrapping_sub(1);
+                self.b = result;
+
+                // Update flags
+                self.set_flag_z(result == 0);
+                self.set_flag_n(true);
+                self.set_flag_h((old_b & 0x0F) == 0x00);
+
+                4
+            }
             _ => {
                 println!("Opcode not implemented: 0x{:02X}", opcode);
                 4
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::memory::Memory;
+
+    #[test]
+    fn test_nop() {
+        let mut cpu = CPU::new();
+        let memory = Memory::new();
+
+        let cycles = cpu.execute_instruction(0x00, &memory);
+
+        assert_eq!(cycles, 4);
+        assert_eq!(cpu.pc, 0);
+    }
+
+    #[test]
+    fn test_ld_a_immediate() {
+        let mut cpu = CPU::new();
+        let mut memory = Memory::new();
+
+        cpu.pc = 0x100;
+        memory.write_byte(0x100, 0x42);
+
+        let cycles = cpu.execute_instruction(0x3E, &memory);
+
+        assert_eq!(cycles, 8);
+        assert_eq!(cpu.pc, 0x101);
+        assert_eq!(cpu.a, 0x42);
+        assert_eq!(cpu.b, 0x00);
+    }
+
+    #[test]
+    fn test_ld_b_immediate() {
+        let mut cpu = CPU::new();
+        let mut memory = Memory::new();
+
+        cpu.pc = 0x104;
+        memory.write_byte(0x104, 0x0F);
+
+        let cycles = cpu.execute_instruction(0x06, &memory);
+
+        assert_eq!(cycles, 8);
+        assert_eq!(cpu.pc, 0x105);
+        assert_eq!(cpu.a, 0x00);
+        assert_eq!(cpu.b, 0x0F);
+    }
+
+    #[test]
+    fn test_inc_a() {
+        let mut cpu = CPU::new();
+        let memory = Memory::new();
+
+        cpu.a = 0x0E;
+
+        let cycles = cpu.execute_instruction(0x3C, &memory);
+
+        assert_eq!(cycles, 4);
+        assert_eq!(cpu.a, 0x0F);
+        assert_eq!(cpu.flag_z(), false);
+        assert_eq!(cpu.flag_n(), false);
+        assert_eq!(cpu.flag_h(), false);
+    }
+
+    #[test]
+    fn test_inc_a_zero() {
+        let mut cpu = CPU::new();
+        let memory = Memory::new();
+
+        cpu.a = 0xFF;
+
+        let cycles = cpu.execute_instruction(0x3C, &memory);
+
+        assert_eq!(cycles, 4);
+        assert_eq!(cpu.a, 0x00);
+        assert_eq!(cpu.flag_z(), true);
+        assert_eq!(cpu.flag_n(), false);
+        assert_eq!(cpu.flag_h(), true);
+    }
+
+    #[test]
+    fn test_inc_a_overflow() {
+        let mut cpu = CPU::new();
+        let memory = Memory::new();
+
+        cpu.a = 0x0F;
+
+        let cycles = cpu.execute_instruction(0x3C, &memory);
+
+        assert_eq!(cycles, 4);
+        assert_eq!(cpu.a, 0x10);
+        assert_eq!(cpu.flag_z(), false);
+        assert_eq!(cpu.flag_n(), false);
+        assert_eq!(cpu.flag_h(), true);
+    }
+
+    #[test]
+    fn test_dec_a() {
+        let mut cpu = CPU::new();
+        let memory = Memory::new();
+
+        cpu.a = 0x0E;
+
+        let cycles = cpu.execute_instruction(0x3D, &memory);
+
+        assert_eq!(cycles, 4);
+        assert_eq!(cpu.a, 0x0D);
+        assert_eq!(cpu.flag_z(), false);
+        assert_eq!(cpu.flag_n(), true);
+        assert_eq!(cpu.flag_h(), false);
+    }
+
+    #[test]
+    fn test_dec_a_zero() {
+        let mut cpu = CPU::new();
+        let memory = Memory::new();
+
+        cpu.a = 0x01;
+
+        let cycles = cpu.execute_instruction(0x3D, &memory);
+
+        assert_eq!(cycles, 4);
+        assert_eq!(cpu.a, 0x00);
+        assert_eq!(cpu.flag_z(), true);
+        assert_eq!(cpu.flag_n(), true);
+        assert_eq!(cpu.flag_h(), false);
+    }
+
+    #[test]
+    fn test_dec_a_overflow() {
+        let mut cpu = CPU::new();
+        let memory = Memory::new();
+
+        cpu.a = 0x10;
+
+        let cycles = cpu.execute_instruction(0x3D, &memory);
+
+        assert_eq!(cycles, 4);
+        assert_eq!(cpu.a, 0x0F);
+        assert_eq!(cpu.flag_z(), false);
+        assert_eq!(cpu.flag_n(), true);
+        assert_eq!(cpu.flag_h(), true);
+    }
+
+    #[test]
+    fn test_inc_b() {
+        let mut cpu = CPU::new();
+        let memory = Memory::new();
+
+        cpu.b = 0x0E;
+
+        let cycles = cpu.execute_instruction(0x04, &memory);
+
+        assert_eq!(cycles, 4);
+        assert_eq!(cpu.b, 0x0F);
+        assert_eq!(cpu.flag_z(), false);
+        assert_eq!(cpu.flag_n(), false);
+        assert_eq!(cpu.flag_h(), false);
+    }
+
+    #[test]
+    fn test_inc_b_zero() {
+        let mut cpu = CPU::new();
+        let memory = Memory::new();
+
+        cpu.b = 0xFF;
+
+        let cycles = cpu.execute_instruction(0x04, &memory);
+
+        assert_eq!(cycles, 4);
+        assert_eq!(cpu.b, 0x00);
+        assert_eq!(cpu.flag_z(), true);
+        assert_eq!(cpu.flag_n(), false);
+        assert_eq!(cpu.flag_h(), true);
+    }
+
+    #[test]
+    fn test_inc_b_overflow() {
+        let mut cpu = CPU::new();
+        let memory = Memory::new();
+
+        cpu.b = 0x0F;
+
+        let cycles = cpu.execute_instruction(0x04, &memory);
+
+        assert_eq!(cycles, 4);
+        assert_eq!(cpu.b, 0x10);
+        assert_eq!(cpu.flag_z(), false);
+        assert_eq!(cpu.flag_n(), false);
+        assert_eq!(cpu.flag_h(), true);
+    }
+
+    #[test]
+    fn test_dec_b() {
+        let mut cpu = CPU::new();
+        let memory = Memory::new();
+
+        cpu.b = 0x0E;
+
+        let cycles = cpu.execute_instruction(0x05, &memory);
+
+        assert_eq!(cycles, 4);
+        assert_eq!(cpu.b, 0x0D);
+        assert_eq!(cpu.flag_z(), false);
+        assert_eq!(cpu.flag_n(), true);
+        assert_eq!(cpu.flag_h(), false);
+    }
+
+    #[test]
+    fn test_dec_b_zero() {
+        let mut cpu = CPU::new();
+        let memory = Memory::new();
+
+        cpu.b = 0x01;
+
+        let cycles = cpu.execute_instruction(0x05, &memory);
+
+        assert_eq!(cycles, 4);
+        assert_eq!(cpu.b, 0x00);
+        assert_eq!(cpu.flag_z(), true);
+        assert_eq!(cpu.flag_n(), true);
+        assert_eq!(cpu.flag_h(), false);
+    }
+
+    #[test]
+    fn test_dec_b_overflow() {
+        let mut cpu = CPU::new();
+        let memory = Memory::new();
+
+        cpu.b = 0x10;
+
+        let cycles = cpu.execute_instruction(0x05, &memory);
+
+        assert_eq!(cycles, 4);
+        assert_eq!(cpu.b, 0x0F);
+        assert_eq!(cpu.flag_z(), false);
+        assert_eq!(cpu.flag_n(), true);
+        assert_eq!(cpu.flag_h(), true);
     }
 }
