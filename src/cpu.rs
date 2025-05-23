@@ -70,4 +70,28 @@ impl CPU {
         self.h = (value >> 8) as u8;
         self.l = value as u8;
     }
+
+    pub fn flag_z(&self) -> bool {
+        (self.f & FLAG_Z) != 0
+    }
+
+    pub fn flag_c(&self) -> bool {
+        (self.f & FLAG_C) != 0
+    }
+
+    pub fn set_flag_z(&mut self, value: bool) {
+        if value {
+            self.f |= FLAG_Z;
+        } else {
+            self.f &= !FLAG_Z;
+        }
+    }
+
+    pub fn set_flag_c(&mut self, value: bool) {
+        if value {
+            self.f |= FLAG_C;
+        } else {
+            self.f &= !FLAG_C;
+        }
+    }
 }
