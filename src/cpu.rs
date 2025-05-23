@@ -234,6 +234,27 @@ impl CPU {
 
                 4
             }
+            0x18 => {
+                // JR r8 - Jump relative
+                let offset = memory.read_byte(self.pc) as i8; // to get offset sign
+                self.pc += 1;
+
+                self.pc = ((self.pc as i32) + (offset as i32)) as u16;
+
+                12
+            }
+            0x28 => {
+                // JR Z, r8 - Jump relative if zero flag is set
+                let offset = memory.read_byte(self.pc) as i8;
+                self.pc += 1;
+
+                if self.flag_z() {
+                    self.pc = ((self.pc as i32) + (offset as i32)) as u16;
+                    12
+                } else {
+                    8
+                }
+            }
             _ => {
                 println!("Opcode not implemented: 0x{:02X}", opcode);
                 4
@@ -640,6 +661,64 @@ mod tests {
         assert_eq!(cpu.flag_n(), true);
         assert_eq!(cpu.flag_h(), false);
         assert_eq!(cpu.flag_c(), true);
+    }
+
+    #[test]
+    fn test_jr_forward() {
+        let mut cpu = CPU::new();
+        let mut memory = Memory::new();
+
+        cpu.pc = 0x0100;
+        memory.write_byte(0x0100, 0x05);
+
+        let cycles = cpu.execute_instruction(0x18, &memory);
+
+        assert_eq!(cycles, 12);
+        assert_eq!(cpu.pc, 0x0106);
+    }
+
+    #[test]
+    fn test_jr_backward() {
+        let mut cpu = CPU::new();
+        let mut memory = Memory::new();
+
+        cpu.pc = 0x0100;
+        memory.write_byte(0x0100, 0xFC);
+
+        let cycles = cpu.execute_instruction(0x18, &memory);
+
+        assert_eq!(cycles, 12);
+        assert_eq!(cpu.pc, 0x00FD);
+    }
+
+    #[test]
+    fn test_jr_z_taken() {
+        let mut cpu = CPU::new();
+        let mut memory = Memory::new();
+
+        cpu.pc = 0x0100;
+        cpu.set_flag_z(true);
+        memory.write_byte(0x0100, 0x03);
+
+        let cycles = cpu.execute_instruction(0x28, &memory);
+
+        assert_eq!(cycles, 12);
+        assert_eq!(cpu.pc, 0x0104);
+    }
+
+    #[test]
+    fn test_jr_z_not_taken() {
+        let mut cpu = CPU::new();
+        let mut memory = Memory::new();
+
+        cpu.pc = 0x0100;
+        cpu.set_flag_z(false);
+        memory.write_byte(0x0100, 0x03);
+
+        let cycles = cpu.execute_instruction(0x28, &memory);
+
+        assert_eq!(cycles, 8);
+        assert_eq!(cpu.pc, 0x0101);
     }
 
     #[test]
