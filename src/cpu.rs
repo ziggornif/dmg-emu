@@ -94,4 +94,27 @@ impl CPU {
             self.f &= !FLAG_C;
         }
     }
+
+    pub fn execute_instruction(&mut self, opcode: u8) -> u8 {
+        match opcode {
+            0x00 => {
+                // NOP
+                4
+            }
+            0x3E => {
+                // LD A, n - Load immediate value into A
+                self.a = 0x42; // TODO: use real memory value
+                8
+            }
+            0x06 => {
+                // LD B, n - Load immediate value into B
+                self.b = 0x10; // TODO: use real memory value
+                8
+            }
+            _ => {
+                println!("Opcode not implemented: 0x{:02X}", opcode);
+                4
+            }
+        }
+    }
 }
