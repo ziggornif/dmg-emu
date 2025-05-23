@@ -1,7 +1,4 @@
-use dmg_emu::{
-    cpu::{self, CPU},
-    memory::Memory,
-};
+use dmg_emu::{cpu::CPU, memory::Memory};
 
 fn main() {
     println!("DMG EMU Booting ...");

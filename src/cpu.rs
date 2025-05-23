@@ -127,12 +127,44 @@ impl CPU {
                 // NOP
                 4
             }
-            0x3E => {
-                // LD A, n - Load immediate value into A
-                let value = memory.read_byte(self.pc);
-                self.a = value;
+            0x01 => {
+                // LD BC, nn - Load 16bits immediate into BC
+                let low = memory.read_byte(self.pc);
                 self.pc += 1;
-                8
+                let high = memory.read_byte(self.pc);
+                self.pc += 1;
+
+                let value = ((high as u16) << 8) | (low as u16);
+                self.set_bc(value);
+
+                12
+            }
+            0x04 => {
+                // INC B - Increment B
+                let old_b = self.b;
+                let result = self.b.wrapping_add(1);
+                self.b = result;
+
+                // Update flags
+                self.set_flag_z(result == 0);
+                self.set_flag_n(false);
+                self.set_flag_h((old_b & 0x0F) == 0x0F);
+
+                4
+            }
+
+            0x05 => {
+                // DEC B - Decrement B
+                let old_b = self.b;
+                let result = self.b.wrapping_sub(1);
+                self.b = result;
+
+                // Update flags
+                self.set_flag_z(result == 0);
+                self.set_flag_n(true);
+                self.set_flag_h((old_b & 0x0F) == 0x00);
+
+                4
             }
             0x06 => {
                 // LD B, n - Load immediate value into B
@@ -167,30 +199,38 @@ impl CPU {
 
                 4
             }
-            0x04 => {
-                // INC B - Increment B
-                let old_b = self.b;
-                let result = self.b.wrapping_add(1);
-                self.b = result;
+            0x3E => {
+                // LD A, n - Load immediate value into A
+                let value = memory.read_byte(self.pc);
+                self.a = value;
+                self.pc += 1;
+                8
+            }
+            0x80 => {
+                // ADD A, B - Add B to A
+                let old_a = self.a;
+                let result = old_a.wrapping_add(self.b);
+                self.a = result;
 
                 // Update flags
                 self.set_flag_z(result == 0);
                 self.set_flag_n(false);
-                self.set_flag_h((old_b & 0x0F) == 0x0F);
+                self.set_flag_h((old_a & 0x0F) + (self.b & 0x0F) > 0x0F);
+                self.set_flag_c((old_a as u16) + (self.b as u16) > 0xFF);
 
                 4
             }
-
-            0x05 => {
-                // DEC B - Decrement B
-                let old_b = self.b;
-                let result = self.b.wrapping_sub(1);
-                self.b = result;
+            0x90 => {
+                // SUB A, B - Sub B from A
+                let old_a = self.a;
+                let result = old_a.wrapping_sub(self.b);
+                self.a = result;
 
                 // Update flags
                 self.set_flag_z(result == 0);
                 self.set_flag_n(true);
-                self.set_flag_h((old_b & 0x0F) == 0x00);
+                self.set_flag_h((old_a & 0x0F) < (self.b & 0x0F));
+                self.set_flag_c((old_a as u16) < (self.b as u16));
 
                 4
             }
@@ -440,5 +480,175 @@ mod tests {
         assert_eq!(cpu.flag_z(), false);
         assert_eq!(cpu.flag_n(), true);
         assert_eq!(cpu.flag_h(), true);
+    }
+
+    #[test]
+    fn test_ld_bc_immediate() {
+        let mut cpu = CPU::new();
+        let mut memory = Memory::new();
+
+        cpu.pc = 0x100;
+        memory.write_byte(0x100, 0x42);
+        memory.write_byte(0x101, 0x10);
+
+        let cycles = cpu.execute_instruction(0x01, &memory);
+
+        assert_eq!(cycles, 12);
+        assert_eq!(cpu.pc, 0x102);
+        assert_eq!(cpu.bc(), 0x1042)
+    }
+
+    #[test]
+    fn test_add_a_b() {
+        let mut cpu = CPU::new();
+        let memory = Memory::new();
+
+        cpu.a = 0x01;
+        cpu.b = 0x02;
+
+        let cycles = cpu.execute_instruction(0x80, &memory);
+
+        assert_eq!(cycles, 4);
+        assert_eq!(cpu.a, 0x03);
+        assert_eq!(cpu.flag_z(), false);
+        assert_eq!(cpu.flag_n(), false);
+        assert_eq!(cpu.flag_h(), false);
+        assert_eq!(cpu.flag_c(), false);
+    }
+
+    #[test]
+    fn test_add_a_b_zero() {
+        let mut cpu = CPU::new();
+        let memory = Memory::new();
+
+        cpu.a = 0x00;
+        cpu.b = 0x00;
+
+        let cycles = cpu.execute_instruction(0x80, &memory);
+
+        assert_eq!(cycles, 4);
+        assert_eq!(cpu.a, 0x00);
+        assert_eq!(cpu.flag_z(), true);
+        assert_eq!(cpu.flag_n(), false);
+        assert_eq!(cpu.flag_h(), false);
+        assert_eq!(cpu.flag_c(), false);
+    }
+
+    #[test]
+    fn test_add_a_b_half_carry() {
+        let mut cpu = CPU::new();
+        let memory = Memory::new();
+
+        cpu.a = 0x0F;
+        cpu.b = 0x01;
+
+        let cycles = cpu.execute_instruction(0x80, &memory);
+
+        assert_eq!(cycles, 4);
+        assert_eq!(cpu.a, 0x10);
+        assert_eq!(cpu.flag_z(), false);
+        assert_eq!(cpu.flag_n(), false);
+        assert_eq!(cpu.flag_h(), true);
+        assert_eq!(cpu.flag_c(), false);
+    }
+
+    #[test]
+    fn test_add_a_b_carry() {
+        let mut cpu = CPU::new();
+        let memory = Memory::new();
+
+        cpu.a = 0xF0;
+        cpu.b = 0x10;
+
+        let cycles = cpu.execute_instruction(0x80, &memory);
+
+        assert_eq!(cycles, 4);
+        assert_eq!(cpu.a, 0x00);
+        assert_eq!(cpu.flag_z(), true);
+        assert_eq!(cpu.flag_n(), false);
+        assert_eq!(cpu.flag_h(), false);
+        assert_eq!(cpu.flag_c(), true);
+    }
+
+    #[test]
+    fn test_sub_a_b() {
+        let mut cpu = CPU::new();
+        let memory = Memory::new();
+
+        cpu.a = 0x0F;
+        cpu.b = 0x05;
+
+        let cycles = cpu.execute_instruction(0x90, &memory);
+
+        assert_eq!(cycles, 4);
+        assert_eq!(cpu.a, 0x0A);
+        assert_eq!(cpu.flag_z(), false);
+        assert_eq!(cpu.flag_n(), true);
+        assert_eq!(cpu.flag_h(), false);
+        assert_eq!(cpu.flag_c(), false);
+    }
+
+    #[test]
+    fn test_sub_a_b_zero() {
+        let mut cpu = CPU::new();
+        let memory = Memory::new();
+
+        cpu.a = 0x05;
+        cpu.b = 0x05;
+
+        let cycles = cpu.execute_instruction(0x90, &memory);
+
+        assert_eq!(cycles, 4);
+        assert_eq!(cpu.a, 0x00);
+        assert_eq!(cpu.flag_z(), true);
+        assert_eq!(cpu.flag_n(), true);
+        assert_eq!(cpu.flag_h(), false);
+        assert_eq!(cpu.flag_c(), false);
+    }
+
+    #[test]
+    fn test_sub_a_b_half_carry() {
+        let mut cpu = CPU::new();
+        let memory = Memory::new();
+
+        cpu.a = 0x10;
+        cpu.b = 0x01;
+
+        let cycles = cpu.execute_instruction(0x90, &memory);
+
+        assert_eq!(cycles, 4);
+        assert_eq!(cpu.a, 0x0F);
+        assert_eq!(cpu.flag_z(), false);
+        assert_eq!(cpu.flag_n(), true);
+        assert_eq!(cpu.flag_h(), true);
+        assert_eq!(cpu.flag_c(), false);
+    }
+
+    #[test]
+    fn test_sub_a_b_carry() {
+        let mut cpu = CPU::new();
+        let memory = Memory::new();
+
+        cpu.a = 0x05;
+        cpu.b = 0x10;
+
+        let cycles = cpu.execute_instruction(0x90, &memory);
+
+        assert_eq!(cycles, 4);
+        assert_eq!(cpu.a, 0xF5);
+        assert_eq!(cpu.flag_z(), false);
+        assert_eq!(cpu.flag_n(), true);
+        assert_eq!(cpu.flag_h(), false);
+        assert_eq!(cpu.flag_c(), true);
+    }
+
+    #[test]
+    fn test_not_implemented() {
+        let mut cpu = CPU::new();
+        let memory = Memory::new();
+
+        let cycles = cpu.execute_instruction(0xFF, &memory);
+
+        assert_eq!(cycles, 4);
     }
 }
