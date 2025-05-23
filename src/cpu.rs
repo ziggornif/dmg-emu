@@ -37,6 +37,32 @@ impl CPU {
         }
     }
 
+    fn get_register(&self, index: u8) -> u8 {
+        match index {
+            0 => self.b,
+            1 => self.c,
+            2 => self.d,
+            3 => self.e,
+            4 => self.h,
+            5 => self.l,
+            7 => self.a,
+            _ => panic!("Invalid index register {}", index),
+        }
+    }
+
+    fn set_register(&mut self, index: u8, value: u8) {
+        match index {
+            0 => self.b = value,
+            1 => self.c = value,
+            2 => self.d = value,
+            3 => self.e = value,
+            4 => self.h = value,
+            5 => self.l = value,
+            7 => self.a = value,
+            _ => panic!("Invalid index register {}", index),
+        }
+    }
+
     pub fn af(&self) -> u16 {
         ((self.a as u16) << 8) | (self.f as u16)
     }
@@ -254,6 +280,30 @@ impl CPU {
                 } else {
                     8
                 }
+            }
+            0x40..=0x7F => {
+                // LD r, r - Load register to register
+                let dest_reg = (opcode >> 3) & 0x07;
+                let src_reg = opcode & 0x07;
+
+                // 0x76 = HALT
+                if opcode == 0x76 {
+                    println!("HALT instruction");
+                    return 4;
+                }
+
+                // HL case - memory access
+                if dest_reg == 6 || src_reg == 6 {
+                    // TODO : implement LD (HL), r and LD r, (HL)
+                    println!("LD (HL) not implemented: 0x{:02X}", opcode);
+                    return 8;
+                }
+
+                // LD r, r
+                let value = self.get_register(src_reg);
+                self.set_register(dest_reg, value);
+
+                4
             }
             _ => {
                 println!("Opcode not implemented: 0x{:02X}", opcode);
@@ -719,6 +769,73 @@ mod tests {
 
         assert_eq!(cycles, 8);
         assert_eq!(cpu.pc, 0x0101);
+    }
+
+    #[test]
+    fn test_ld_b_a() {
+        let mut cpu = CPU::new();
+        let memory = Memory::new();
+
+        cpu.a = 0x42;
+        cpu.b = 0x00;
+
+        let cycles = cpu.execute_instruction(0x47, &memory);
+
+        assert_eq!(cycles, 4);
+        assert_eq!(cpu.b, 0x42);
+        assert_eq!(cpu.a, 0x42);
+    }
+
+    #[test]
+    fn test_ld_a_c() {
+        let mut cpu = CPU::new();
+        let memory = Memory::new();
+
+        cpu.a = 0x00;
+        cpu.c = 0x99;
+
+        let cycles = cpu.execute_instruction(0x79, &memory);
+
+        assert_eq!(cycles, 4);
+        assert_eq!(cpu.a, 0x99);
+        assert_eq!(cpu.c, 0x99);
+    }
+
+    #[test]
+    fn test_ld_same_register() {
+        let mut cpu = CPU::new();
+        let memory = Memory::new();
+
+        cpu.d = 0x33;
+
+        let cycles = cpu.execute_instruction(0x52, &memory);
+
+        assert_eq!(cycles, 4);
+        assert_eq!(cpu.d, 0x33);
+    }
+
+    #[test]
+    fn test_ld_hl_memory() {
+        let mut cpu = CPU::new();
+        let memory = Memory::new();
+
+        cpu.d = 0x33;
+
+        let cycles = cpu.execute_instruction(0x70, &memory);
+
+        assert_eq!(cycles, 8);
+        // TODO: test LD (HL) case in the future
+    }
+
+    #[test]
+    fn test_halt_instruction() {
+        let mut cpu = CPU::new();
+        let memory = Memory::new();
+
+        let cycles = cpu.execute_instruction(0x76, &memory);
+
+        assert_eq!(cycles, 4);
+        // TODO: test HALT state in the future
     }
 
     #[test]
