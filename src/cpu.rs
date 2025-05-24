@@ -476,6 +476,39 @@ impl CPU {
                 self.set_af(value);
                 12
             }
+            0xCD => {
+                // CALL nn - Call function
+                let low = memory.read_byte(self.pc) as u16;
+                self.pc += 1;
+                let high = memory.read_byte(self.pc) as u16;
+                self.pc += 1;
+                let address = (high << 8) | low;
+
+                // store current address
+                self.stack_push(memory, self.pc);
+
+                // jump to function address
+                self.pc = address;
+
+                24
+            }
+            0xC9 => {
+                // RET - Return from function
+                self.pc = self.stack_pop(memory);
+                16
+            }
+            0xC3 => {
+                // JP nn - Jump absolute
+                let low = memory.read_byte(self.pc) as u16;
+                self.pc += 1;
+                let high = memory.read_byte(self.pc) as u16;
+                self.pc += 1;
+                let address = (high << 8) | low;
+
+                self.pc = address;
+
+                16
+            }
             _ => {
                 println!("Opcode not implemented: 0x{:02X}", opcode);
                 4
@@ -1260,6 +1293,146 @@ mod tests {
         assert_eq!(cpu.flag_n(), true);
         assert_eq!(cpu.flag_h(), false);
         assert_eq!(cpu.flag_c(), false);
+    }
+
+    #[test]
+    fn test_push_pop_bc() {
+        let mut cpu = CPU::new();
+        let mut memory = Memory::new();
+
+        cpu.set_bc(0x1234);
+        cpu.sp = 0xFFFE;
+
+        let cycles = cpu.execute_instruction(0xC5, &mut memory);
+
+        assert_eq!(cycles, 16);
+        assert_eq!(cpu.sp, 0xFFFC);
+        assert_eq!(memory.read_byte(0xFFFC), 0x34);
+        assert_eq!(memory.read_byte(0xFFFD), 0x12);
+
+        // reset bc
+        cpu.set_bc(0x0000);
+
+        let cycles = cpu.execute_instruction(0xC1, &mut memory);
+
+        assert_eq!(cycles, 12);
+        assert_eq!(cpu.bc(), 0x1234);
+        assert_eq!(cpu.sp, 0xFFFE);
+    }
+
+    #[test]
+    fn test_push_pop_de() {
+        let mut cpu = CPU::new();
+        let mut memory = Memory::new();
+
+        cpu.set_de(0xABCD);
+        cpu.sp = 0x8000;
+
+        let cycles = cpu.execute_instruction(0xD5, &mut memory);
+
+        assert_eq!(cycles, 16);
+        assert_eq!(cpu.sp, 0x7FFE);
+        assert_eq!(memory.read_byte(0x7FFE), 0xCD);
+        assert_eq!(memory.read_byte(0x7FFF), 0xAB);
+
+        // reset de
+
+        let cycles = cpu.execute_instruction(0xD1, &mut memory);
+
+        assert_eq!(cycles, 12);
+        assert_eq!(cpu.de(), 0xABCD);
+        assert_eq!(cpu.sp, 0x8000);
+    }
+
+    #[test]
+    fn test_push_pop_hl() {
+        let mut cpu = CPU::new();
+        let mut memory = Memory::new();
+
+        cpu.set_hl(0x5678);
+        cpu.sp = 0x9000;
+
+        let cycles = cpu.execute_instruction(0xE5, &mut memory);
+
+        assert_eq!(cycles, 16);
+        assert_eq!(cpu.sp, 0x8FFE);
+        assert_eq!(memory.read_byte(0x8FFE), 0x78);
+        assert_eq!(memory.read_byte(0x8FFF), 0x56);
+
+        cpu.set_hl(0x0000);
+
+        let cycles = cpu.execute_instruction(0xE1, &mut memory);
+        assert_eq!(cycles, 12);
+        assert_eq!(cpu.hl(), 0x5678);
+        assert_eq!(cpu.sp, 0x9000);
+    }
+
+    #[test]
+    fn test_push_pop_af() {
+        let mut cpu = CPU::new();
+        let mut memory = Memory::new();
+
+        cpu.set_af(0x1000);
+        cpu.sp = 0x2000;
+
+        let cycles = cpu.execute_instruction(0xF5, &mut memory);
+
+        assert_eq!(cycles, 16);
+        assert_eq!(cpu.sp, 0x1FFE);
+        assert_eq!(memory.read_byte(0x1FFE), 0x00);
+        assert_eq!(memory.read_byte(0x1FFF), 0x10);
+
+        cpu.set_af(0x0000);
+
+        let cycles = cpu.execute_instruction(0xF1, &mut memory);
+        assert_eq!(cycles, 12);
+        assert_eq!(cpu.af(), 0x1000);
+        assert_eq!(cpu.sp, 0x2000);
+    }
+
+    #[test]
+    fn test_call_ret_basic() {
+        let mut cpu = CPU::new();
+        let mut memory = Memory::new();
+
+        cpu.pc = 0x0100;
+        cpu.sp = 0xFFFE;
+
+        // Setup CALL 0x0200
+        memory.write_byte(0x0100, 0x00);
+        memory.write_byte(0x0101, 0x02);
+
+        let cycles = cpu.execute_instruction(0xCD, &mut memory);
+
+        assert_eq!(cycles, 24);
+        assert_eq!(cpu.pc, 0x0200);
+        assert_eq!(cpu.sp, 0xFFFC);
+
+        // assert return address is 0x0102
+        assert_eq!(memory.read_byte(0xFFFC), 0x02);
+        assert_eq!(memory.read_byte(0xFFFD), 0x01);
+
+        let cycles = cpu.execute_instruction(0xC9, &mut memory);
+
+        assert_eq!(cycles, 16);
+        assert_eq!(cpu.pc, 0x0102);
+        assert_eq!(cpu.sp, 0xFFFE);
+    }
+
+    #[test]
+    fn test_jp_absolute() {
+        let mut cpu = CPU::new();
+        let mut memory = Memory::new();
+
+        cpu.pc = 0x0150;
+
+        memory.write_byte(0x0150, 0x00);
+        memory.write_byte(0x0151, 0x03);
+
+        let cycles = cpu.execute_instruction(0xC3, &mut memory);
+
+        assert_eq!(cycles, 16);
+        assert_eq!(cpu.pc, 0x0300);
     }
 
     #[test]
