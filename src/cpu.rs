@@ -19,6 +19,9 @@ pub struct CPU {
     // 16bit registers
     pub sp: u16, // stack pointer
     pub pc: u16, // program counter
+
+    // Interrupt Master Enable
+    ime: bool,
 }
 
 impl Default for CPU {
@@ -40,6 +43,7 @@ impl CPU {
             l: 0,
             sp: 0,
             pc: 0,
+            ime: false,
         }
     }
 
@@ -268,6 +272,10 @@ impl CPU {
         } else {
             self.f &= !FLAG_N;
         }
+    }
+
+    pub fn interrupts_enabled(&self) -> bool {
+        self.ime
     }
 
     pub fn execute_instruction(&mut self, opcode: u8, memory: &mut Memory) -> u8 {
@@ -640,6 +648,146 @@ impl CPU {
                 } else {
                     8
                 }
+            }
+            0xF3 => {
+                // DI - Disable interrupts
+                self.ime = false;
+
+                4
+            }
+            0xFB => {
+                // EI - Enable interrupts
+                self.ime = true;
+
+                4
+            }
+            0x31 => {
+                // LD SP, nn - Load 16bits immediate into SP
+                let low = memory.read_byte(self.pc) as u16;
+                self.pc += 1;
+                let high = memory.read_byte(self.pc) as u16;
+                self.pc += 1;
+
+                self.sp = (high << 8) | low;
+
+                12
+            }
+            0xD6 => {
+                // SUB A, n - Substract immediate from A
+                let value = memory.read_byte(self.pc);
+                self.pc += 1;
+
+                self.alu_sub(value);
+
+                8
+            }
+            0xFE => {
+                // CP A, n - Compare A with immediate
+                let value = memory.read_byte(self.pc);
+                self.pc += 1;
+
+                self.alu_cp(value);
+
+                8
+            }
+            0xE0 => {
+                // LDH (n), A - Load A into 0xFF00+n
+                let offset = memory.read_byte(self.pc);
+                self.pc += 1;
+
+                let address = 0xFF00 + (offset as u16);
+                memory.write_byte(address, self.a);
+
+                12
+            }
+            0xEA => {
+                // LD (nn), A - Load A into absolute address
+                let low = memory.read_byte(self.pc) as u16;
+                self.pc += 1;
+                let high = memory.read_byte(self.pc) as u16;
+                self.pc += 1;
+
+                let address = (high << 8) | low;
+                memory.write_byte(address, self.a);
+
+                16
+            }
+            0x07 => {
+                // RLCA - Rotate A left circular
+                let carry = (self.a & 0x80) != 0;
+                self.a = (self.a << 1) | if carry { 1 } else { 0 };
+
+                self.set_flag_z(false);
+                self.set_flag_n(false);
+                self.set_flag_h(false);
+                self.set_flag_c(carry);
+
+                4
+            }
+            0x0F => {
+                // RRCA - Rotate A right circular
+                let carry = (self.a & 0x01) != 0;
+                self.a = (self.a >> 1) | if carry { 0x80 } else { 0 };
+
+                self.set_flag_z(false);
+                self.set_flag_n(false);
+                self.set_flag_h(false);
+                self.set_flag_c(carry);
+
+                4
+            }
+            0x03 => {
+                // INC BC
+                let value = self.bc().wrapping_add(1);
+                self.set_bc(value);
+
+                8
+            }
+            0x0B => {
+                // DEC BC
+                let value = self.bc().wrapping_sub(1);
+                self.set_bc(value);
+
+                8
+            }
+            0x21 => {
+                // LD HL, nn - Load immediate into HL
+                let low = memory.read_byte(self.pc) as u16;
+                self.pc += 1;
+                let high = memory.read_byte(self.pc) as u16;
+                self.pc += 1;
+
+                let value = (high << 8) | low;
+                self.set_hl(value);
+
+                12
+            }
+            0x23 => {
+                // INC HL
+                let value = self.hl().wrapping_add(1);
+                self.set_hl(value);
+
+                8
+            }
+            0x2A => {
+                // LD A, (HL+) - Load A from HL then increment HL
+                let address = self.hl();
+                self.a = memory.read_byte(address);
+
+                let new_hl = address.wrapping_add(1);
+                self.set_hl(new_hl);
+
+                8
+            }
+            0xF0 => {
+                // LDH A, n - Load A from 0xFF00+n
+                let offset = memory.read_byte(self.pc);
+                self.pc += 1;
+
+                let address = 0xFF00 + (offset as u16);
+                self.a = memory.read_byte(address);
+
+                12
             }
             _ => {
                 println!("Opcode not implemented: 0x{:02X}", opcode);
