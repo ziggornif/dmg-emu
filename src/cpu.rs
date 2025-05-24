@@ -21,6 +21,12 @@ pub struct CPU {
     pub pc: u16, // program counter
 }
 
+impl Default for CPU {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl CPU {
     pub fn new() -> Self {
         Self {
@@ -333,34 +339,6 @@ impl CPU {
                 self.pc += 1;
                 8
             }
-            0x80 => {
-                // ADD A, B - Add B to A
-                let old_a = self.a;
-                let result = old_a.wrapping_add(self.b);
-                self.a = result;
-
-                // Update flags
-                self.set_flag_z(result == 0);
-                self.set_flag_n(false);
-                self.set_flag_h((old_a & 0x0F) + (self.b & 0x0F) > 0x0F);
-                self.set_flag_c((old_a as u16) + (self.b as u16) > 0xFF);
-
-                4
-            }
-            0x90 => {
-                // SUB A, B - Sub B from A
-                let old_a = self.a;
-                let result = old_a.wrapping_sub(self.b);
-                self.a = result;
-
-                // Update flags
-                self.set_flag_z(result == 0);
-                self.set_flag_n(true);
-                self.set_flag_h((old_a & 0x0F) < (self.b & 0x0F));
-                self.set_flag_c((old_a as u16) < (self.b as u16));
-
-                4
-            }
             0x18 => {
                 // JR r8 - Jump relative
                 let offset = memory.read_byte(self.pc) as i8; // to get offset sign
@@ -408,7 +386,7 @@ impl CPU {
             }
             0x80..=0xBF => {
                 let operation = (opcode >> 3) & 0x07;
-                let src_reg = opcode & opcode & 0x07;
+                let src_reg = opcode & 0x07;
 
                 // HL case - memory access
                 if src_reg == 6 {

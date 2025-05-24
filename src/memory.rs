@@ -15,3 +15,9 @@ impl Memory {
         self.data[address as usize] = value;
     }
 }
+
+impl Default for Memory {
+    fn default() -> Self {
+        Self::new()
+    }
+}
