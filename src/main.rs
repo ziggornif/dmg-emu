@@ -19,8 +19,22 @@ fn main() {
 
     cpu.pc = 0x0100; // cartridge boot address
 
-    for _ in 0..1000 {
-        step(&mut cpu, &mut memory);
+    for i in 0..10000 {
+        let vblank = step(&mut cpu, &mut memory);
+
+        if vblank {
+            println!("V-Blank interrupt at step {}", i)
+        }
+
+        if i % 1000 == 0 {
+            println!(
+                "Step {}: PC=0x{:04X}, LY={}, PPU_MODE={:?}",
+                i,
+                cpu.pc,
+                memory.ppu.ly,
+                get_ppu_mode(&memory.ppu)
+            );
+        }
     }
 
     println!("End of execution");
@@ -40,19 +54,29 @@ fn main() {
     );
 }
 
-fn step(cpu: &mut CPU, memory: &mut Memory) {
+fn step(cpu: &mut CPU, memory: &mut Memory) -> bool {
     let opcode = memory.read_byte(cpu.pc);
-    println!("PC: 0x{:04X}, OPCODE: 0x{:02X}", cpu.pc, opcode);
+    // println!("PC: 0x{:04X}, OPCODE: 0x{:02X}", cpu.pc, opcode);
 
     cpu.pc += 1;
 
     let cycles = cpu.execute_instruction(opcode, memory);
 
-    println!("   -> Cycles: {}", cycles);
+    memory.step_ppu(cycles)
 }
 
 fn load_rom(memory: &mut Memory, rom_data: &[u8]) {
     for (i, &byte) in rom_data.iter().take(0x8000).enumerate() {
         memory.write_byte(i as u16, byte);
+    }
+}
+
+fn get_ppu_mode(ppu: &dmg_emu::ppu::PPU) -> &str {
+    match ppu.stat & 0x03 {
+        0 => "HBlank",
+        1 => "VBlank",
+        2 => "OAMScan",
+        3 => "Drawing",
+        _ => "Unknown",
     }
 }
