@@ -1,7 +1,7 @@
 BROWSER := firefox
 COVERAGE_PATH := ./coverage/tarpaulin-report.html
 
-.PHONY: test, coverage, lint, format
+.PHONY: test, coverage, lint, format, run, build, release
 
 test:
 	cargo test
@@ -14,3 +14,12 @@ lint:
 
 format:
 	cargo fmt
+
+run:
+	cargo run
+
+build:
+	cargo build
+
+release:
+	cargo build --release

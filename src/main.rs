@@ -10,7 +10,7 @@ fn main() {
     cpu.pc = 0x0100; // cartridge boot address
 
     for _ in 0..20 {
-        step(&mut cpu, &memory);
+        step(&mut cpu, &mut memory);
     }
 
     println!("End of execution");
@@ -30,7 +30,7 @@ fn main() {
     );
 }
 
-fn step(cpu: &mut CPU, memory: &Memory) {
+fn step(cpu: &mut CPU, memory: &mut Memory) {
     let opcode = memory.read_byte(cpu.pc);
     println!("PC: 0x{:04X}, OPCODE: 0x{:02X}", cpu.pc, opcode);
 
@@ -86,7 +86,7 @@ fn load_program(memory: &mut Memory) {
     memory.write_byte(0x0108, 0x0F); // A = 0x0F
     memory.write_byte(0x0109, 0xA8); // XOR A, B → A = 0x0F ^ 0x01 = 0x0E
     memory.write_byte(0x010A, 0xB0); // OR A, B  → A = 0x0E | 0x01 = 0x0F
-    memory.write_byte(0x010B, 0xB8); // CP A, B  → Compare 0x0F avec 0x01 (A ne change pas)
+    memory.write_byte(0x010B, 0xB8); // CP A, B  → Compare 0x0F with 0x01 (A doesn´t change)
 
     memory.write_byte(0x010C, 0x00); // NOP
 }
