@@ -1995,6 +1995,121 @@ mod tests {
     }
 
     #[test]
+    fn test_di() {
+        let mut cpu = CPU::new();
+        let mut memory = Memory::new();
+
+        let cycles = cpu.execute_instruction(0xF3, &mut memory);
+
+        assert_eq!(cycles, 4);
+        assert_eq!(cpu.ime, false)
+    }
+
+    #[test]
+    fn test_ei() {
+        let mut cpu = CPU::new();
+        let mut memory = Memory::new();
+
+        let cycles = cpu.execute_instruction(0xFB, &mut memory);
+
+        assert_eq!(cycles, 4);
+        assert_eq!(cpu.ime, true)
+    }
+
+    #[test]
+    fn test_sp_nn_immediate() {
+        let mut cpu = CPU::new();
+        let mut memory = Memory::new();
+
+        cpu.pc = 0x0100;
+
+        memory.write_byte(0x0100, 0x34);
+        memory.write_byte(0x0101, 0x12);
+
+        let cycles = cpu.execute_instruction(0x31, &mut memory);
+
+        assert_eq!(cycles, 12);
+        assert_eq!(cpu.pc, 0x0102);
+        assert_eq!(cpu.sp, 0x1234);
+    }
+
+    #[test]
+    fn test_sub_a_immediate() {
+        let mut cpu = CPU::new();
+        let mut memory = Memory::new();
+
+        cpu.a = 0x10;
+        cpu.pc = 0x0100;
+
+        memory.write_byte(0x0100, 0x05);
+
+        let cycles = cpu.execute_instruction(0xD6, &mut memory);
+
+        assert_eq!(cycles, 8);
+        assert_eq!(cpu.a, 0x0B);
+        assert_eq!(cpu.flag_z(), false);
+        assert_eq!(cpu.flag_n(), true);
+        assert_eq!(cpu.flag_h(), true);
+        assert_eq!(cpu.flag_c(), false);
+    }
+
+    #[test]
+    fn test_cp_a_immediate() {
+        let mut cpu = CPU::new();
+        let mut memory = Memory::new();
+
+        cpu.a = 0x10;
+        cpu.pc = 0x0100;
+
+        memory.write_byte(0x0100, 0x05);
+
+        let cycles = cpu.execute_instruction(0xFE, &mut memory);
+
+        assert_eq!(cycles, 8);
+        assert_eq!(cpu.a, 0x10);
+        assert_eq!(cpu.pc, 0x101);
+        assert_eq!(cpu.flag_z(), false);
+        assert_eq!(cpu.flag_n(), true);
+        assert_eq!(cpu.flag_h(), true);
+        assert_eq!(cpu.flag_c(), false);
+    }
+
+    #[test]
+    fn test_ldh_a() {
+        let mut cpu = CPU::new();
+        let mut memory = Memory::new();
+
+        cpu.a = 0x10;
+        cpu.pc = 0x0100;
+
+        memory.write_byte(0x0100, 0x05);
+
+        let cycles = cpu.execute_instruction(0xE0, &mut memory);
+
+        assert_eq!(cycles, 12);
+        assert_eq!(memory.read_byte(0xFF05), cpu.a);
+        assert_eq!(cpu.pc, 0x101);
+    }
+
+    #[test]
+    fn test_ld_a_absolute() {
+        let mut cpu = CPU::new();
+        let mut memory = Memory::new();
+
+        cpu.pc = 0x0100;
+        cpu.a = 0x15;
+
+        memory.write_byte(0x0100, 0x34);
+        memory.write_byte(0x0101, 0x12);
+
+        let cycles = cpu.execute_instruction(0xEA, &mut memory);
+
+        assert_eq!(cycles, 16);
+        assert_eq!(cpu.pc, 0x0102);
+        assert_eq!(memory.read_byte(0x1234), cpu.a);
+    }
+
+    #[test]
     fn test_not_implemented() {
         let mut cpu = CPU::new();
         let mut memory = Memory::new();
