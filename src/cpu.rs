@@ -509,6 +509,138 @@ impl CPU {
 
                 16
             }
+            0xC2 => {
+                // JP NZ, nn
+                let low = memory.read_byte(self.pc) as u16;
+                self.pc += 1;
+                let high = memory.read_byte(self.pc) as u16;
+                self.pc += 1;
+                let address = (high << 8) | low;
+
+                if !self.flag_z() {
+                    self.pc = address;
+                    16
+                } else {
+                    12
+                }
+            }
+            0xCA => {
+                // JP Z, nn
+                let low = memory.read_byte(self.pc) as u16;
+                self.pc += 1;
+                let high = memory.read_byte(self.pc) as u16;
+                self.pc += 1;
+                let address = (high << 8) | low;
+
+                if self.flag_z() {
+                    self.pc = address;
+                    16
+                } else {
+                    12
+                }
+            }
+            0xD2 => {
+                // JP NC, nn
+                let low = memory.read_byte(self.pc) as u16;
+                self.pc += 1;
+                let high = memory.read_byte(self.pc) as u16;
+                self.pc += 1;
+                let address = (high << 8) | low;
+
+                if !self.flag_c() {
+                    self.pc = address;
+                    16
+                } else {
+                    12
+                }
+            }
+            0xDA => {
+                // JP C, nn
+                let low = memory.read_byte(self.pc) as u16;
+                self.pc += 1;
+                let high = memory.read_byte(self.pc) as u16;
+                self.pc += 1;
+                let address = (high << 8) | low;
+
+                if self.flag_c() {
+                    self.pc = address;
+                    16
+                } else {
+                    12
+                }
+            }
+            0xC0 => {
+                // RET NZ
+                if !self.flag_z() {
+                    self.pc = self.stack_pop(memory);
+                    20
+                } else {
+                    8
+                }
+            }
+            0xC8 => {
+                // RET Z
+                if self.flag_z() {
+                    self.pc = self.stack_pop(memory);
+                    20
+                } else {
+                    8
+                }
+            }
+            0xD0 => {
+                // RET NC
+                if !self.flag_c() {
+                    self.pc = self.stack_pop(memory);
+                    20
+                } else {
+                    8
+                }
+            }
+            0xD8 => {
+                // RET C
+                if self.flag_c() {
+                    self.pc = self.stack_pop(memory);
+                    20
+                } else {
+                    8
+                }
+            }
+            0x20 => {
+                // JR NZ, r8
+                let offset = memory.read_byte(self.pc) as i8;
+                self.pc += 1;
+
+                if !self.flag_z() {
+                    self.pc = ((self.pc as i32) + (offset as i32)) as u16;
+                    12
+                } else {
+                    8
+                }
+            }
+            0x30 => {
+                // JR NC, r8
+                let offset = memory.read_byte(self.pc) as i8;
+                self.pc += 1;
+
+                if !self.flag_c() {
+                    self.pc = ((self.pc as i32) + (offset as i32)) as u16;
+                    12
+                } else {
+                    8
+                }
+            }
+            0x38 => {
+                // JR C, r8
+                let offset = memory.read_byte(self.pc) as i8;
+                self.pc += 1;
+
+                if self.flag_c() {
+                    self.pc = ((self.pc as i32) + (offset as i32)) as u16;
+                    12
+                } else {
+                    8
+                }
+            }
             _ => {
                 println!("Opcode not implemented: 0x{:02X}", opcode);
                 4
@@ -1433,6 +1565,285 @@ mod tests {
 
         assert_eq!(cycles, 16);
         assert_eq!(cpu.pc, 0x0300);
+    }
+
+    #[test]
+    fn test_jp_nz() {
+        let mut cpu = CPU::new();
+        let mut memory = Memory::new();
+
+        cpu.pc = 0x0100;
+        cpu.set_flag_z(true);
+
+        memory.write_byte(0x0100, 0x00);
+        memory.write_byte(0x0101, 0x03);
+
+        let cycles = cpu.execute_instruction(0xC2, &mut memory);
+
+        assert_eq!(cycles, 12);
+        assert_eq!(cpu.pc, 0x0102);
+
+        cpu.pc = 0x0100;
+        cpu.set_flag_z(false);
+
+        let cycles = cpu.execute_instruction(0xC2, &mut memory);
+
+        assert_eq!(cycles, 16);
+        assert_eq!(cpu.pc, 0x0300);
+    }
+
+    #[test]
+    fn test_jp_z() {
+        let mut cpu = CPU::new();
+        let mut memory = Memory::new();
+
+        cpu.pc = 0x0100;
+        cpu.set_flag_z(true);
+
+        memory.write_byte(0x0100, 0x00);
+        memory.write_byte(0x0101, 0x03);
+
+        let cycles = cpu.execute_instruction(0xCA, &mut memory);
+
+        assert_eq!(cycles, 16);
+        assert_eq!(cpu.pc, 0x0300);
+
+        cpu.pc = 0x0100;
+        cpu.set_flag_z(false);
+
+        let cycles = cpu.execute_instruction(0xCA, &mut memory);
+
+        assert_eq!(cycles, 12);
+        assert_eq!(cpu.pc, 0x0102);
+    }
+
+    #[test]
+    fn test_jp_nc() {
+        let mut cpu = CPU::new();
+        let mut memory = Memory::new();
+
+        cpu.pc = 0x0100;
+        cpu.set_flag_c(true);
+
+        memory.write_byte(0x0100, 0x00);
+        memory.write_byte(0x0101, 0x03);
+
+        let cycles = cpu.execute_instruction(0xD2, &mut memory);
+
+        assert_eq!(cycles, 12);
+        assert_eq!(cpu.pc, 0x0102);
+
+        cpu.pc = 0x0100;
+        cpu.set_flag_c(false);
+
+        let cycles = cpu.execute_instruction(0xD2, &mut memory);
+
+        assert_eq!(cycles, 16);
+        assert_eq!(cpu.pc, 0x0300);
+    }
+
+    #[test]
+    fn test_jp_c() {
+        let mut cpu = CPU::new();
+        let mut memory = Memory::new();
+
+        cpu.pc = 0x0100;
+        cpu.set_flag_c(true);
+
+        memory.write_byte(0x0100, 0x00);
+        memory.write_byte(0x0101, 0x03);
+
+        let cycles = cpu.execute_instruction(0xDA, &mut memory);
+
+        assert_eq!(cycles, 16);
+        assert_eq!(cpu.pc, 0x0300);
+
+        cpu.pc = 0x0100;
+        cpu.set_flag_c(false);
+
+        let cycles = cpu.execute_instruction(0xDA, &mut memory);
+
+        assert_eq!(cycles, 12);
+        assert_eq!(cpu.pc, 0x0102);
+    }
+
+    #[test]
+    fn test_ret_nz() {
+        let mut cpu = CPU::new();
+        let mut memory = Memory::new();
+
+        cpu.sp = 0xFFFC;
+        cpu.set_flag_z(true);
+
+        memory.write_byte(0xFFFC, 0x34);
+        memory.write_byte(0xFFFD, 0x12);
+
+        let cycles = cpu.execute_instruction(0xC0, &mut memory);
+
+        assert_eq!(cycles, 8);
+        assert_eq!(cpu.pc, 0x0000);
+        assert_eq!(cpu.sp, 0xFFFC);
+
+        cpu.set_flag_z(false);
+
+        let cycles = cpu.execute_instruction(0xC0, &mut memory);
+
+        assert_eq!(cycles, 20);
+        assert_eq!(cpu.pc, 0x1234);
+        assert_eq!(cpu.sp, 0xFFFE);
+    }
+
+    #[test]
+    fn test_ret_z() {
+        let mut cpu = CPU::new();
+        let mut memory = Memory::new();
+
+        cpu.sp = 0xFFFC;
+        cpu.set_flag_z(false);
+
+        memory.write_byte(0xFFFC, 0x34);
+        memory.write_byte(0xFFFD, 0x12);
+
+        let cycles = cpu.execute_instruction(0xC8, &mut memory);
+
+        assert_eq!(cycles, 8);
+        assert_eq!(cpu.pc, 0x0000);
+        assert_eq!(cpu.sp, 0xFFFC);
+
+        cpu.set_flag_z(true);
+
+        let cycles = cpu.execute_instruction(0xC8, &mut memory);
+
+        assert_eq!(cycles, 20);
+        assert_eq!(cpu.pc, 0x1234);
+        assert_eq!(cpu.sp, 0xFFFE);
+    }
+
+    #[test]
+    fn test_ret_nc() {
+        let mut cpu = CPU::new();
+        let mut memory = Memory::new();
+
+        cpu.sp = 0xFFFC;
+        cpu.set_flag_c(true);
+
+        memory.write_byte(0xFFFC, 0x34);
+        memory.write_byte(0xFFFD, 0x12);
+
+        let cycles = cpu.execute_instruction(0xD0, &mut memory);
+
+        assert_eq!(cycles, 8);
+        assert_eq!(cpu.pc, 0x0000);
+        assert_eq!(cpu.sp, 0xFFFC);
+
+        cpu.set_flag_c(false);
+
+        let cycles = cpu.execute_instruction(0xD0, &mut memory);
+
+        assert_eq!(cycles, 20);
+        assert_eq!(cpu.pc, 0x1234);
+        assert_eq!(cpu.sp, 0xFFFE);
+    }
+
+    #[test]
+    fn test_ret_c() {
+        let mut cpu = CPU::new();
+        let mut memory = Memory::new();
+
+        cpu.sp = 0xFFFC;
+        cpu.set_flag_c(false);
+
+        memory.write_byte(0xFFFC, 0x34);
+        memory.write_byte(0xFFFD, 0x12);
+
+        let cycles = cpu.execute_instruction(0xD8, &mut memory);
+
+        assert_eq!(cycles, 8);
+        assert_eq!(cpu.pc, 0x0000);
+        assert_eq!(cpu.sp, 0xFFFC);
+
+        cpu.set_flag_c(true);
+
+        let cycles = cpu.execute_instruction(0xD8, &mut memory);
+
+        assert_eq!(cycles, 20);
+        assert_eq!(cpu.pc, 0x1234);
+        assert_eq!(cpu.sp, 0xFFFE);
+    }
+
+    #[test]
+    fn test_jr_nz() {
+        let mut cpu = CPU::new();
+        let mut memory = Memory::new();
+
+        cpu.pc = 0x0100;
+        cpu.set_flag_z(true);
+
+        memory.write_byte(0x0100, 0x05); // offset
+
+        let cycles = cpu.execute_instruction(0x20, &mut memory);
+
+        assert_eq!(cycles, 8);
+        assert_eq!(cpu.pc, 0x0101);
+
+        // reset pc
+        cpu.pc = 0x0100;
+        cpu.set_flag_z(false);
+
+        let cycles = cpu.execute_instruction(0x20, &mut memory);
+
+        assert_eq!(cycles, 12);
+        assert_eq!(cpu.pc, 0x0106);
+    }
+
+    #[test]
+    fn test_jr_nc() {
+        let mut cpu = CPU::new();
+        let mut memory = Memory::new();
+
+        cpu.pc = 0x0100;
+        cpu.set_flag_c(true);
+
+        memory.write_byte(0x0100, 0x05); // offset
+
+        let cycles = cpu.execute_instruction(0x30, &mut memory);
+
+        assert_eq!(cycles, 8);
+        assert_eq!(cpu.pc, 0x0101);
+
+        // reset pc
+        cpu.pc = 0x0100;
+        cpu.set_flag_c(false);
+
+        let cycles = cpu.execute_instruction(0x30, &mut memory);
+
+        assert_eq!(cycles, 12);
+        assert_eq!(cpu.pc, 0x0106);
+    }
+
+    #[test]
+    fn test_jr_c() {
+        let mut cpu = CPU::new();
+        let mut memory = Memory::new();
+
+        cpu.pc = 0x0100;
+        cpu.set_flag_c(false);
+
+        memory.write_byte(0x0100, 0x05); // offset
+
+        let cycles = cpu.execute_instruction(0x38, &mut memory);
+
+        assert_eq!(cycles, 8);
+        assert_eq!(cpu.pc, 0x0101);
+
+        // reset pc
+        cpu.pc = 0x0100;
+        cpu.set_flag_c(true);
+
+        let cycles = cpu.execute_instruction(0x38, &mut memory);
+
+        assert_eq!(cycles, 12);
+        assert_eq!(cpu.pc, 0x0106);
     }
 
     #[test]
