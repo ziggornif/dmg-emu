@@ -63,6 +63,107 @@ impl CPU {
         }
     }
 
+    fn alu_add(&mut self, value: u8) {
+        let old_a = self.a;
+        let result = old_a.wrapping_add(value);
+
+        self.a = result;
+
+        // Update flags
+        self.set_flag_z(result == 0);
+        self.set_flag_n(false);
+        self.set_flag_h((old_a & 0x0F) + (value & 0x0F) > 0x0F);
+        self.set_flag_c((old_a as u16) + (value as u16) > 0xFF);
+    }
+
+    fn alu_adc(&mut self, value: u8) {
+        let old_a = self.a;
+        let carry = if self.flag_c() { 1 } else { 0 };
+        let result = old_a.wrapping_add(value).wrapping_add(carry);
+
+        self.a = result;
+
+        // Update flags
+        self.set_flag_z(result == 0);
+        self.set_flag_n(false);
+        self.set_flag_h((old_a & 0x0F) + (value & 0x0F) + carry > 0x0F);
+        self.set_flag_c((old_a as u16) + (value as u16) + (carry as u16) > 0xFF);
+    }
+
+    fn alu_sub(&mut self, value: u8) {
+        let old_a = self.a;
+        let result = old_a.wrapping_sub(value);
+
+        self.a = result;
+
+        // Update flags
+        self.set_flag_z(result == 0);
+        self.set_flag_n(true);
+        self.set_flag_h((old_a & 0x0F) < (value & 0x0F));
+        self.set_flag_c((old_a as u16) < (value as u16));
+    }
+
+    fn alu_sbc(&mut self, value: u8) {
+        let old_a = self.a;
+        let carry = if self.flag_c() { 1 } else { 0 };
+        let result = old_a.wrapping_sub(value).wrapping_sub(carry);
+
+        self.a = result;
+
+        // Update flags
+        self.set_flag_z(result == 0);
+        self.set_flag_n(true);
+        self.set_flag_h((old_a & 0x0F) < (value & 0x0F) + carry);
+        self.set_flag_c((old_a as u16) < (value as u16) + (carry as u16));
+    }
+
+    fn alu_and(&mut self, value: u8) {
+        let result = self.a & value;
+
+        self.a = result;
+
+        // Update flags
+        self.set_flag_z(result == 0);
+        self.set_flag_n(false);
+        self.set_flag_h(true);
+        self.set_flag_c(false);
+    }
+
+    fn alu_xor(&mut self, value: u8) {
+        let result = self.a ^ value;
+
+        self.a = result;
+
+        // Update flags
+        self.set_flag_z(result == 0);
+        self.set_flag_n(false);
+        self.set_flag_h(false);
+        self.set_flag_c(false);
+    }
+
+    fn alu_or(&mut self, value: u8) {
+        let result = self.a | value;
+
+        self.a = result;
+
+        // Update flags
+        self.set_flag_z(result == 0);
+        self.set_flag_n(false);
+        self.set_flag_h(false);
+        self.set_flag_c(false);
+    }
+
+    fn alu_cp(&mut self, value: u8) {
+        let old_a = self.a;
+        let result = old_a.wrapping_sub(value);
+
+        // Update flags
+        self.set_flag_z(result == 0);
+        self.set_flag_n(true);
+        self.set_flag_h((old_a & 0x0F) < (value & 0x0F));
+        self.set_flag_c((old_a as u16) < (value as u16));
+    }
+
     pub fn af(&self) -> u16 {
         ((self.a as u16) << 8) | (self.f as u16)
     }
@@ -302,6 +403,33 @@ impl CPU {
                 // LD r, r
                 let value = self.get_register(src_reg);
                 self.set_register(dest_reg, value);
+
+                4
+            }
+            0x80..=0xBF => {
+                let operation = (opcode >> 3) & 0x07;
+                let src_reg = opcode & opcode & 0x07;
+
+                // HL case - memory access
+                if src_reg == 6 {
+                    // TODO : implement ALU (HL)
+                    println!("ALU (HL) not implemented: 0x{:02X}", opcode);
+                    return 8;
+                }
+
+                let src_value = self.get_register(src_reg);
+
+                match operation {
+                    0 => self.alu_add(src_value),
+                    1 => self.alu_adc(src_value),
+                    2 => self.alu_sub(src_value),
+                    3 => self.alu_sbc(src_value),
+                    4 => self.alu_and(src_value),
+                    5 => self.alu_xor(src_value),
+                    6 => self.alu_or(src_value),
+                    7 => self.alu_cp(src_value),
+                    _ => unreachable!(),
+                }
 
                 4
             }
@@ -836,6 +964,259 @@ mod tests {
 
         assert_eq!(cycles, 4);
         // TODO: test HALT state in the future
+    }
+
+    #[test]
+    fn test_add_a_r() {
+        let mut cpu = CPU::new();
+        let memory = Memory::new();
+
+        cpu.a = 0x10;
+        cpu.b = 0x05;
+
+        let cycles = cpu.execute_instruction(0x80, &memory);
+
+        assert_eq!(cycles, 4);
+        assert_eq!(cpu.a, 0x15);
+        assert_eq!(cpu.flag_z(), false);
+        assert_eq!(cpu.flag_n(), false);
+        assert_eq!(cpu.flag_h(), false);
+        assert_eq!(cpu.flag_c(), false);
+    }
+
+    #[test]
+    fn test_add_a_r_with_carry() {
+        let mut cpu = CPU::new();
+        let memory = Memory::new();
+
+        cpu.a = 0xFF;
+        cpu.c = 0x01;
+
+        let cycles = cpu.execute_instruction(0x81, &memory);
+
+        assert_eq!(cycles, 4);
+        assert_eq!(cpu.a, 0x00);
+        assert_eq!(cpu.flag_z(), true);
+        assert_eq!(cpu.flag_n(), false);
+        assert_eq!(cpu.flag_h(), true);
+        assert_eq!(cpu.flag_c(), true);
+    }
+
+    #[test]
+    fn test_adc_a_r_without_flag() {
+        let mut cpu = CPU::new();
+        let memory = Memory::new();
+
+        cpu.a = 0x10;
+        cpu.b = 0x05;
+
+        let cycles = cpu.execute_instruction(0x88, &memory);
+
+        assert_eq!(cycles, 4);
+        assert_eq!(cpu.a, 0x15);
+        assert_eq!(cpu.flag_z(), false);
+        assert_eq!(cpu.flag_n(), false);
+        assert_eq!(cpu.flag_h(), false);
+        assert_eq!(cpu.flag_c(), false);
+    }
+
+    #[test]
+    fn test_adc_a_r_with_flag() {
+        let mut cpu = CPU::new();
+        let memory = Memory::new();
+
+        cpu.a = 0x20;
+        cpu.d = 0x06;
+        cpu.set_flag_c(true);
+
+        let cycles = cpu.execute_instruction(0x8A, &memory);
+
+        assert_eq!(cycles, 4);
+        assert_eq!(cpu.a, 0x27);
+        assert_eq!(cpu.flag_z(), false);
+        assert_eq!(cpu.flag_n(), false);
+        assert_eq!(cpu.flag_h(), false);
+        assert_eq!(cpu.flag_c(), false);
+    }
+
+    #[test]
+    fn test_sub_a_r() {
+        let mut cpu = CPU::new();
+        let memory = Memory::new();
+
+        cpu.a = 0x20;
+        cpu.d = 0x10;
+
+        let cycles = cpu.execute_instruction(0x92, &memory);
+
+        assert_eq!(cycles, 4);
+        assert_eq!(cpu.a, 0x10);
+        assert_eq!(cpu.flag_z(), false);
+        assert_eq!(cpu.flag_n(), true);
+        assert_eq!(cpu.flag_h(), false);
+        assert_eq!(cpu.flag_c(), false);
+    }
+
+    #[test]
+    fn test_sub_a_r_underflow() {
+        let mut cpu = CPU::new();
+        let memory = Memory::new();
+
+        cpu.a = 0x5;
+        cpu.e = 0x16;
+
+        let cycles = cpu.execute_instruction(0x93, &memory);
+
+        assert_eq!(cycles, 4);
+        assert_eq!(cpu.a, 0xEF);
+        assert_eq!(cpu.flag_z(), false);
+        assert_eq!(cpu.flag_n(), true);
+        assert_eq!(cpu.flag_h(), true);
+        assert_eq!(cpu.flag_c(), true);
+    }
+
+    #[test]
+    fn test_sbc_a_r_without_flag() {
+        let mut cpu = CPU::new();
+        let memory = Memory::new();
+
+        cpu.a = 0x10;
+        cpu.e = 0x02;
+
+        let cycles = cpu.execute_instruction(0x9B, &memory);
+
+        assert_eq!(cycles, 4);
+        assert_eq!(cpu.a, 0x0E);
+        assert_eq!(cpu.flag_z(), false);
+        assert_eq!(cpu.flag_n(), true);
+        assert_eq!(cpu.flag_h(), true);
+        assert_eq!(cpu.flag_c(), false);
+    }
+
+    #[test]
+    fn test_sbc_a_r_with_flag() {
+        let mut cpu = CPU::new();
+        let memory = Memory::new();
+
+        cpu.a = 0x20;
+        cpu.l = 0x05;
+        cpu.set_flag_c(true);
+
+        let cycles = cpu.execute_instruction(0x9D, &memory);
+
+        assert_eq!(cycles, 4);
+        assert_eq!(cpu.a, 0x1A);
+        assert_eq!(cpu.flag_z(), false);
+        assert_eq!(cpu.flag_n(), true);
+        assert_eq!(cpu.flag_h(), true);
+        assert_eq!(cpu.flag_c(), false);
+    }
+
+    #[test]
+    fn test_and_a_r() {
+        let mut cpu = CPU::new();
+        let memory = Memory::new();
+
+        cpu.a = 0xF0;
+        cpu.h = 0x0F;
+
+        let cycles = cpu.execute_instruction(0xA4, &memory);
+
+        assert_eq!(cycles, 4);
+        assert_eq!(cpu.a, 0x00);
+        assert_eq!(cpu.flag_z(), true);
+        assert_eq!(cpu.flag_n(), false);
+        assert_eq!(cpu.flag_h(), true);
+        assert_eq!(cpu.flag_c(), false);
+    }
+
+    #[test]
+    fn test_xor_a_r() {
+        let mut cpu = CPU::new();
+        let memory = Memory::new();
+
+        cpu.a = 0xAA; // 1010 1010
+        cpu.l = 0x55; // 0101 0101
+
+        let cycles = cpu.execute_instruction(0xAD, &memory);
+
+        assert_eq!(cycles, 4);
+        assert_eq!(cpu.a, 0xFF);
+        assert_eq!(cpu.flag_z(), false);
+        assert_eq!(cpu.flag_n(), false);
+        assert_eq!(cpu.flag_h(), false);
+        assert_eq!(cpu.flag_c(), false);
+    }
+
+    #[test]
+    fn test_xor_a_a_zero() {
+        let mut cpu = CPU::new();
+        let memory = Memory::new();
+
+        cpu.a = 0xAA; // 1010 1010
+
+        let cycles = cpu.execute_instruction(0xAF, &memory);
+
+        assert_eq!(cycles, 4);
+        assert_eq!(cpu.a, 0x00);
+        assert_eq!(cpu.flag_z(), true);
+        assert_eq!(cpu.flag_n(), false);
+        assert_eq!(cpu.flag_h(), false);
+        assert_eq!(cpu.flag_c(), false);
+    }
+
+    #[test]
+    fn test_or_a_r() {
+        let mut cpu = CPU::new();
+        let memory = Memory::new();
+
+        cpu.a = 0xF0;
+        cpu.b = 0x0F;
+
+        let cycles = cpu.execute_instruction(0xB0, &memory);
+
+        assert_eq!(cycles, 4);
+        assert_eq!(cpu.a, 0xFF);
+        assert_eq!(cpu.flag_z(), false);
+        assert_eq!(cpu.flag_n(), false);
+        assert_eq!(cpu.flag_h(), false);
+        assert_eq!(cpu.flag_c(), false);
+    }
+
+    #[test]
+    fn test_cp_a_r_equal() {
+        let mut cpu = CPU::new();
+        let memory = Memory::new();
+
+        cpu.a = 0x42;
+        cpu.c = 0x42;
+        cpu.d = 0x10;
+
+        let cycles = cpu.execute_instruction(0xB9, &memory);
+
+        assert_eq!(cycles, 4);
+        assert_eq!(cpu.a, 0x42);
+        assert_eq!(cpu.flag_z(), true);
+        assert_eq!(cpu.flag_n(), true);
+        assert_eq!(cpu.flag_h(), false);
+        assert_eq!(cpu.flag_c(), false);
+    }
+    #[test]
+    fn test_cp_a_r() {
+        let mut cpu = CPU::new();
+        let memory = Memory::new();
+
+        cpu.a = 0x42;
+        cpu.d = 0x10;
+
+        let cycles = cpu.execute_instruction(0xBA, &memory);
+
+        assert_eq!(cycles, 4);
+        assert_eq!(cpu.a, 0x42);
+        assert_eq!(cpu.flag_z(), false);
+        assert_eq!(cpu.flag_n(), true);
+        assert_eq!(cpu.flag_h(), false);
+        assert_eq!(cpu.flag_c(), false);
     }
 
     #[test]
