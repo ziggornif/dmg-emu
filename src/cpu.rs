@@ -770,7 +770,7 @@ impl CPU {
                 8
             }
             0x2A => {
-                // LD A, (HL+) - Load A from HL then increment HL
+                // LD A, (HL+) - Load A then increment HL
                 let address = self.hl();
                 self.a = memory.read_byte(address);
 
@@ -2107,6 +2107,161 @@ mod tests {
         assert_eq!(cycles, 16);
         assert_eq!(cpu.pc, 0x0102);
         assert_eq!(memory.read_byte(0x1234), cpu.a);
+    }
+
+    #[test]
+    fn test_rlca() {
+        let mut cpu = CPU::new();
+        let mut memory = Memory::new();
+
+        cpu.a = 0x0F;
+
+        let cycles = cpu.execute_instruction(0x07, &mut memory);
+
+        assert_eq!(cycles, 4);
+        assert_eq!(cpu.a, 0x1E);
+        assert_eq!(cpu.flag_z(), false);
+        assert_eq!(cpu.flag_n(), false);
+        assert_eq!(cpu.flag_h(), false);
+        assert_eq!(cpu.flag_c(), false);
+    }
+
+    #[test]
+    fn test_rlca_carry() {
+        let mut cpu = CPU::new();
+        let mut memory = Memory::new();
+
+        cpu.a = 0xF5;
+
+        let cycles = cpu.execute_instruction(0x07, &mut memory);
+
+        assert_eq!(cycles, 4);
+        assert_eq!(cpu.a, 0xEB);
+        assert_eq!(cpu.flag_z(), false);
+        assert_eq!(cpu.flag_n(), false);
+        assert_eq!(cpu.flag_h(), false);
+        assert_eq!(cpu.flag_c(), true);
+    }
+
+    #[test]
+    fn test_rrca() {
+        let mut cpu = CPU::new();
+        let mut memory = Memory::new();
+
+        cpu.a = 0xD6;
+
+        let cycles = cpu.execute_instruction(0x0F, &mut memory);
+
+        assert_eq!(cycles, 4);
+        assert_eq!(cpu.a, 0x6B);
+        assert_eq!(cpu.flag_z(), false);
+        assert_eq!(cpu.flag_n(), false);
+        assert_eq!(cpu.flag_h(), false);
+        assert_eq!(cpu.flag_c(), false);
+    }
+
+    #[test]
+    fn test_rrca_carry() {
+        let mut cpu = CPU::new();
+        let mut memory = Memory::new();
+
+        cpu.a = 0xF5;
+
+        let cycles = cpu.execute_instruction(0x0F, &mut memory);
+
+        assert_eq!(cycles, 4);
+        assert_eq!(cpu.a, 0xFA);
+        assert_eq!(cpu.flag_z(), false);
+        assert_eq!(cpu.flag_n(), false);
+        assert_eq!(cpu.flag_h(), false);
+        assert_eq!(cpu.flag_c(), true);
+    }
+
+    #[test]
+    fn test_inc_bc() {
+        let mut cpu = CPU::new();
+        let mut memory = Memory::new();
+
+        cpu.set_bc(0x1234);
+
+        let cycles = cpu.execute_instruction(0x03, &mut memory);
+
+        assert_eq!(cycles, 8);
+        assert_eq!(cpu.bc(), 0x1235);
+    }
+
+    #[test]
+    fn test_dec_bc() {
+        let mut cpu = CPU::new();
+        let mut memory = Memory::new();
+
+        cpu.set_bc(0x1234);
+
+        let cycles = cpu.execute_instruction(0x0B, &mut memory);
+
+        assert_eq!(cycles, 8);
+        assert_eq!(cpu.bc(), 0x1233);
+    }
+
+    #[test]
+    fn test_hl_nn_immediate() {
+        let mut cpu = CPU::new();
+        let mut memory = Memory::new();
+
+        cpu.pc = 0x0100;
+
+        memory.write_byte(0x0100, 0x34);
+        memory.write_byte(0x0101, 0x12);
+
+        let cycles = cpu.execute_instruction(0x21, &mut memory);
+
+        assert_eq!(cycles, 12);
+        assert_eq!(cpu.pc, 0x0102);
+        assert_eq!(cpu.hl(), 0x1234);
+    }
+
+    #[test]
+    fn test_inc_hl() {
+        let mut cpu = CPU::new();
+        let mut memory = Memory::new();
+
+        cpu.set_hl(0x1234);
+
+        let cycles = cpu.execute_instruction(0x23, &mut memory);
+
+        assert_eq!(cycles, 8);
+        assert_eq!(cpu.hl(), 0x1235);
+    }
+
+    #[test]
+    fn test_lda_hl_inc() {
+        let mut cpu = CPU::new();
+        let mut memory = Memory::new();
+
+        cpu.set_hl(0x0105);
+        memory.write_byte(0x0105, 0x42);
+
+        let cycles = cpu.execute_instruction(0x2A, &mut memory);
+
+        assert_eq!(cycles, 8);
+        assert_eq!(cpu.hl(), 0x0106);
+        assert_eq!(cpu.a, 0x42);
+    }
+
+    #[test]
+    fn test_ldha() {
+        let mut cpu = CPU::new();
+        let mut memory = Memory::new();
+
+        cpu.pc = 0x0100;
+        memory.write_byte(0x0100, 0x05);
+        memory.write_byte(0xFF05, 0x16);
+
+        let cycles = cpu.execute_instruction(0xF0, &mut memory);
+
+        assert_eq!(cycles, 12);
+        assert_eq!(cpu.pc, 0x0101);
+        assert_eq!(cpu.a, 0x16);
     }
 
     #[test]
