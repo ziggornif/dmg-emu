@@ -308,6 +308,103 @@ mod tests {
     }
 
     #[test]
+    fn test_vblank_trigger() {
+        let mut ppu = PPU::new();
+        let mut vblank_triggered = false;
+
+        let mut total_cycles = 0u32;
+        let target_vblank = 144 * 456;
+
+        while total_cycles < target_vblank && !vblank_triggered {
+            let cycles = match total_cycles % 60 {
+                0..=10 => 4,   // LD r,r
+                11..=25 => 8,  // LD r,n
+                26..=35 => 12, // JR cc,r8
+                36..=45 => 16, // LD (nn),A
+                46..=55 => 20, // JR r8
+                _ => 24,       // CALL nn
+            };
+
+            let vblank = ppu.step(cycles);
+            if vblank {
+                vblank_triggered = true;
+            }
+
+            total_cycles += cycles as u32;
+        }
+
+        assert!(vblank_triggered);
+        assert_eq!(ppu.ly, 144);
+        assert_eq!(ppu.read_register(0xFF41) & 0x03, 1); // V-Blank
+    }
+
+    #[test]
+    fn test_lcd_disable_realistic() {
+        let mut ppu = PPU::new();
+
+        advance_ppu_lines(&mut ppu, 1);
+
+        assert_eq!(ppu.ly, 1);
+        assert!(ppu.read_register(0xFF41) & 0x03 != 0);
+
+        ppu.write_register(0xFF40, 0x00);
+
+        assert_eq!(ppu.ly, 0);
+        assert_eq!(ppu.read_register(0xFF41) & 0x03, 0); // HBlank
+        assert!(!ppu.is_lcd_enabled());
+
+        let realistic_cycles = [4, 8, 12, 16, 20, 24];
+        for i in 0..1000 {
+            ppu.step(realistic_cycles[i % realistic_cycles.len()]);
+        }
+        assert_eq!(ppu.ly, 0);
+    }
+
+    #[test]
+    fn test_complete_frame() {
+        let mut ppu = PPU::new();
+
+        let instructions = [
+            ("NOP", 4),        // 4 cycles
+            ("LD B,n", 8),     // 8 cycles
+            ("ADD A,B", 4),    // 4 cycles
+            ("JR NZ,r8", 12),  // 12 cycles (branch taken)
+            ("LD (HL),A", 8),  // 8 cycles
+            ("INC HL", 8),     // 8 cycles
+            ("DEC B", 4),      // 4 cycles
+            ("JR Z,r8", 8),    // 8 cycles (branch not taken)
+            ("CALL nn", 24),   // 24 cycles
+            ("RET", 16),       // 16 cycles
+            ("LD A,(HL+)", 8), // 8 cycles
+            ("CP n", 8),       // 8 cycles
+        ];
+
+        for i in 0..16000 {
+            let (_, cycles) = instructions[i % instructions.len()];
+            let vblank = ppu.step(cycles);
+
+            if vblank {
+                break;
+            }
+        }
+
+        assert_eq!(ppu.ly, 144);
+        assert_eq!(ppu.read_register(0xFF41) & 0x03, 1); // VBlank
+
+        for i in 0..4560 {
+            let (_, cycles) = instructions[i % instructions.len()];
+            ppu.step(cycles);
+
+            if ppu.ly == 0 {
+                break;
+            }
+        }
+
+        assert_eq!(ppu.ly, 0);
+        assert_eq!(ppu.read_register(0xFF41) & 0x03, 2); // OAMScan
+    }
+
+    #[test]
     fn test_not_implemented() {
         let mut ppu = PPU::new();
 
