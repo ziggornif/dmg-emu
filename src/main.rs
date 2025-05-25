@@ -56,12 +56,8 @@ fn main() {
 
 fn step(cpu: &mut CPU, memory: &mut Memory) -> bool {
     let opcode = memory.read_byte(cpu.pc);
-    // println!("PC: 0x{:04X}, OPCODE: 0x{:02X}", cpu.pc, opcode);
-
     cpu.pc += 1;
-
     let cycles = cpu.execute_instruction(opcode, memory);
-
     memory.step_ppu(cycles)
 }
 

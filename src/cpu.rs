@@ -395,10 +395,17 @@ impl CPU {
                     return 4;
                 }
 
-                // HL case - memory access
-                if dest_reg == 6 || src_reg == 6 {
-                    // TODO : implement LD (HL), r and LD r, (HL)
-                    println!("LD (HL) not implemented: 0x{:02X}", opcode);
+                if dest_reg == 6 {
+                    let address = self.hl();
+                    let value = self.get_register(src_reg);
+                    memory.write_byte(address, value);
+                    return 8;
+                }
+
+                if src_reg == 6 {
+                    let address = self.hl();
+                    let value = memory.read_byte(address);
+                    self.set_register(dest_reg, value);
                     return 8;
                 }
 
@@ -717,6 +724,7 @@ impl CPU {
                 let carry = (self.a & 0x80) != 0;
                 self.a = (self.a << 1) | if carry { 1 } else { 0 };
 
+                // Update flags
                 self.set_flag_z(false);
                 self.set_flag_n(false);
                 self.set_flag_h(false);
@@ -729,6 +737,7 @@ impl CPU {
                 let carry = (self.a & 0x01) != 0;
                 self.a = (self.a >> 1) | if carry { 0x80 } else { 0 };
 
+                // Update flags
                 self.set_flag_z(false);
                 self.set_flag_n(false);
                 self.set_flag_h(false);
@@ -788,6 +797,183 @@ impl CPU {
                 self.a = memory.read_byte(address);
 
                 12
+            }
+            0xFA => {
+                // LD (HL), A - Load A from absolute address
+                let low = memory.read_byte(self.pc) as u16;
+                self.pc += 1;
+                let high = memory.read_byte(self.pc) as u16;
+                self.pc += 1;
+
+                let address = (high << 8) | low;
+                self.a = memory.read_byte(address);
+
+                16
+            }
+            0x2C => {
+                // INC L
+                let old_l = self.l;
+                let result = self.l.wrapping_add(1);
+                self.l = result;
+
+                // Update flags
+                self.set_flag_z(result == 0);
+                self.set_flag_n(false);
+                self.set_flag_h((old_l & 0x0F) == 0x0F);
+
+                4
+            }
+            0xC4 => {
+                // CALL NZ, nn - Call function if not zero
+                let low = memory.read_byte(self.pc) as u16;
+                self.pc += 1;
+                let high = memory.read_byte(self.pc) as u16;
+                self.pc += 1;
+
+                let address = (high << 8) | low;
+
+                if !self.flag_z() {
+                    self.stack_push(memory, self.pc);
+                    self.pc = address;
+                    24
+                } else {
+                    12
+                }
+            }
+            0x10 => {
+                // STOP - Stop CPU until interrupt occurs
+                let _next_byte = memory.read_byte(self.pc);
+                self.pc += 1;
+
+                println!("STOP instruction executed - continuing ...");
+
+                4
+            }
+            0x0C => {
+                // INC C
+                let old_c = self.c;
+                let result = self.c.wrapping_add(1);
+                self.c = result;
+
+                // Update flags
+                self.set_flag_z(result == 0);
+                self.set_flag_n(false);
+                self.set_flag_h((old_c & 0x0F) == 0x0F);
+
+                4
+            }
+            0x14 => {
+                // INC D
+                let old_d = self.d;
+                let result = self.d.wrapping_add(1);
+                self.d = result;
+
+                // Update flags
+                self.set_flag_z(result == 0);
+                self.set_flag_n(false);
+                self.set_flag_h((old_d & 0x0F) == 0x0F);
+
+                4
+            }
+            0x1C => {
+                // INC E
+                let old_e = self.e;
+                let result = self.e.wrapping_add(1);
+                self.e = result;
+
+                // Update flags
+                self.set_flag_z(result == 0);
+                self.set_flag_n(false);
+                self.set_flag_h((old_e & 0x0F) == 0x0F);
+
+                4
+            }
+            0x24 => {
+                // INC H
+                let old_h = self.h;
+                let result = self.h.wrapping_add(1);
+                self.h = result;
+
+                // Update flags
+                self.set_flag_z(result == 0);
+                self.set_flag_n(false);
+                self.set_flag_h((old_h & 0x0F) == 0x0F);
+
+                4
+            }
+            0x0D => {
+                // DEC C
+                let old_c = self.c;
+                let result = self.c.wrapping_sub(1);
+                self.c = result;
+
+                // Update flags
+                self.set_flag_z(result == 0);
+                self.set_flag_n(true);
+                self.set_flag_h((old_c & 0x0F) == 0x00);
+
+                4
+            }
+            0x15 => {
+                // DEC D
+                let old_d = self.d;
+                let result = self.d.wrapping_sub(1);
+                self.d = result;
+
+                // Update flags
+                self.set_flag_z(result == 0);
+                self.set_flag_n(true);
+                self.set_flag_h((old_d & 0x0F) == 0x00);
+
+                4
+            }
+            0x1D => {
+                // DEC E
+                let old_e = self.e;
+                let result = self.e.wrapping_sub(1);
+                self.e = result;
+
+                // Update flags
+                self.set_flag_z(result == 0);
+                self.set_flag_n(true);
+                self.set_flag_h((old_e & 0x0F) == 0x00);
+
+                4
+            }
+            0x25 => {
+                // DEC H
+                let old_h = self.h;
+                let result = self.h.wrapping_sub(1);
+                self.h = result;
+
+                // Update flags
+                self.set_flag_z(result == 0);
+                self.set_flag_n(true);
+                self.set_flag_h((old_h & 0x0F) == 0x00);
+
+                4
+            }
+            0x2D => {
+                // DEC L
+                let old_l = self.l;
+                let result = self.l.wrapping_sub(1);
+                self.l = result;
+
+                // Update flags
+                self.set_flag_z(result == 0);
+                self.set_flag_n(true);
+                self.set_flag_h((old_l & 0x0F) == 0x00);
+
+                4
+            }
+            0xE6 => {
+                // AND A, n - Logical AND with immediate value
+                let value = memory.read_byte(self.pc);
+                self.pc += 1;
+
+                self.alu_and(value);
+
+                8
             }
             _ => {
                 println!("Opcode not implemented: 0x{:02X}", opcode);
