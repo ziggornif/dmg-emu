@@ -27,9 +27,9 @@ impl Memory {
         }
     }
 
-    pub fn step_ppu(&mut self, cpu_cycles: u8) -> bool {
-        self.ppu.step(cpu_cycles)
-    }
+    // pub fn step_ppu(&mut self, cpu_cycles: u8) -> bool {
+    //     self.ppu.step(cpu_cycles, self)
+    // }
 }
 
 impl Default for Memory {

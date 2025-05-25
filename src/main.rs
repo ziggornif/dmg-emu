@@ -1,6 +1,6 @@
 use std::fs;
 
-use dmg_emu::{cpu::CPU, memory::Memory};
+use dmg_emu::{cpu::CPU, memory::Memory, ppu::PPU};
 
 fn main() {
     println!("DMG EMU Booting ...");
@@ -55,11 +55,11 @@ fn main() {
     );
 }
 
-fn step(cpu: &mut CPU, memory: &mut Memory) -> bool {
+fn step(cpu: &mut CPU, memory: &mut Memory, ppu: &mut PPU) -> bool {
     let opcode = memory.read_byte(cpu.pc);
     cpu.pc += 1;
     let cycles = cpu.execute_instruction(opcode, memory);
-    memory.step_ppu(cycles)
+    ppu.step(cycles, memory)
 }
 
 fn load_rom(memory: &mut Memory, rom_data: &[u8]) {

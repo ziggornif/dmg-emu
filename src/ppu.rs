@@ -1,3 +1,5 @@
+use crate::memory::{self, Memory};
+
 pub struct PPU {
     // PPU registers
     pub lcdc: u8, // LCD Control
@@ -9,8 +11,16 @@ pub struct PPU {
     pub wy: u8,   // Window Y Pos
     pub wx: u8,   // Window X Pos
 
+    // palette
+    pub bgp: u8,  // Background palette
+    pub obp0: u8, // Object palette 0
+    pub obp1: u8, // Object palette 1
+
     cycles: u32,
     mode: PPUMode,
+
+    // Framebuffer
+    pub framebuffer: [[u8; 160]; 144], // 160x144px
 }
 
 impl Default for PPU {
@@ -38,8 +48,12 @@ impl PPU {
             lyc: 0x00,
             wy: 0x00,
             wx: 0x00,
+            bgp: 0xFC,
+            obp0: 0xFF,
+            obp1: 0xFF,
             cycles: 0,
             mode: PPUMode::OAMScan,
+            framebuffer: [[0; 160]; 144],
         }
     }
 
@@ -53,6 +67,9 @@ impl PPU {
             0xFF45 => self.lyc,
             0xFF4A => self.wy,
             0xFF4B => self.wx,
+            0xFF47 => self.bgp,
+            0xFF48 => self.obp0,
+            0xFF49 => self.obp1,
             _ => {
                 println!("Register not implemented: 0x{:04X}", address);
                 0xFF
@@ -78,6 +95,21 @@ impl PPU {
             0xFF45 => self.lyc = value,
             0xFF4A => self.wy = value,
             0xFF4B => self.wx = value,
+            0xFF47 => {
+                self.bgp = value;
+                println!("Background palette configured: 0x{:02X}", value);
+                self.decode_palette(value, "Background");
+            }
+            0xFF48 => {
+                self.obp0 = value;
+                println!("Object palette 0 configured: 0x{:02X}", value);
+                self.decode_palette(value, "Object 0");
+            }
+            0xFF49 => {
+                self.obp1 = value;
+                println!("Object palette 1 configured: 0x{:02X}", value);
+                self.decode_palette(value, "Object 1");
+            }
             _ => {
                 println!(
                     "Register not implemented: 0x{:04X} = 0x{:02X}",
@@ -87,7 +119,7 @@ impl PPU {
         }
     }
 
-    pub fn step(&mut self, cpu_cycles: u8) -> bool {
+    pub fn step(&mut self, cpu_cycles: u8, memory: &Memory) -> bool {
         if (self.lcdc & 0x80) == 0 {
             return false;
         }
@@ -105,6 +137,9 @@ impl PPU {
             PPUMode::Drawing => {
                 if self.cycles >= 172 {
                     self.cycles -= 172;
+
+                    self.render_line(memory);
+
                     self.mode = PPUMode::HBLank;
                 }
             }
@@ -145,6 +180,77 @@ impl PPU {
 
     pub fn is_lcd_enabled(&self) -> bool {
         (self.lcdc & 0x80) != 0
+    }
+
+    fn render_line(&mut self, memory: &Memory) {
+        let line = self.ly as usize;
+        if line >= 144 {
+            return;
+        }
+
+        for x in 0..160 {
+            let color = match (x / 40, line / 36) {
+                (0, 0) => 0, // White
+                (1, 0) => 1, // Light Gray
+                (2, 0) => 2, // Dark Gray
+                (3, 0) => 3, // Black
+                (0, 1) => 1,
+                (1, 1) => 2,
+                (2, 1) => 3,
+                (3, 1) => 0,
+                (0, 2) => 2,
+                (1, 2) => 3,
+                (2, 2) => 0,
+                (3, 2) => 1,
+                (0, 3) => 3,
+                (1, 3) => 0,
+                (2, 3) => 1,
+                (3, 3) => 2,
+                _ => (x + line) % 4, // Default pattern
+            };
+
+            self.framebuffer[line][x] = color as u8;
+        }
+    }
+
+    // Display current palette
+    fn decode_palette(&self, palette: u8, name: &str) {
+        let color0 = palette & 0x03;
+        let color1 = (palette >> 2) & 0x03;
+        let color2 = (palette >> 4) & 0x03;
+        let color3 = (palette >> 6) & 0x03;
+
+        let color_names = ["White", "Light Gray", "Dark Gray", "Black"];
+
+        println!(
+            "  {} palette: {} -> {} -> {} -> {}",
+            name,
+            color_names[color0 as usize],
+            color_names[color1 as usize],
+            color_names[color2 as usize],
+            color_names[color3 as usize]
+        );
+    }
+
+    pub fn print_screen(&self) {
+        println!("┌{}┐", "─".repeat(160));
+
+        for line in self.framebuffer.iter() {
+            print!("│");
+            for &pixel in line.iter() {
+                let char = match pixel {
+                    0 => ' ', // Blanc
+                    1 => '░', // Gris clair
+                    2 => '▒', // Gris foncé
+                    3 => '█', // Noir
+                    _ => '?',
+                };
+                print!("{}", char);
+            }
+            println!("│");
+        }
+
+        println!("└{}┘", "─".repeat(160));
     }
 }
 
