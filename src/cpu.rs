@@ -420,14 +420,12 @@ impl CPU {
                 let operation = (opcode >> 3) & 0x07;
                 let src_reg = opcode & 0x07;
 
-                // HL case - memory access
-                if src_reg == 6 {
-                    // TODO : implement ALU (HL)
-                    println!("ALU (HL) not implemented: 0x{:02X}", opcode);
-                    return 8;
-                }
-
-                let src_value = self.get_register(src_reg);
+                let src_value = if src_reg == 6 {
+                    // HL case - memory access
+                    memory.read_byte(self.hl())
+                } else {
+                    self.get_register(src_reg)
+                };
 
                 match operation {
                     0 => self.alu_add(src_value),
@@ -441,7 +439,7 @@ impl CPU {
                     _ => unreachable!(),
                 }
 
-                4
+                if src_reg == 6 { 8 } else { 4 }
             }
             0xC5 => {
                 // PUSH BC
@@ -974,6 +972,336 @@ impl CPU {
                 self.alu_and(value);
 
                 8
+            }
+            0x0E => {
+                // LD C, n - Load immediate into C
+                let value = memory.read_byte(self.pc);
+                self.pc += 1;
+                self.c = value;
+
+                8
+            }
+            0x11 => {
+                // LD DE, nn - Load 16bit immediate into DE
+                let low = memory.read_byte(self.pc) as u16;
+                self.pc += 1;
+                let high = memory.read_byte(self.pc) as u16;
+                self.pc += 1;
+
+                let value = (high << 8) | low;
+                self.set_de(value);
+
+                12
+            }
+            0x08 => {
+                // LD (nn), SP - Store stack pointer at absolute address
+                let low = memory.read_byte(self.pc) as u16;
+                self.pc += 1;
+                let high = memory.read_byte(self.pc) as u16;
+                self.pc += 1;
+
+                let address = (high << 8) | low;
+
+                memory.write_byte(address, self.sp as u8);
+                memory.write_byte(address + 1, (self.sp >> 8) as u8);
+
+                20
+            }
+            0x1A => {
+                // LD A, (DE) - Load A from memory at DE address
+                let address = self.de();
+                self.a = memory.read_byte(address);
+
+                8
+            }
+            0x13 => {
+                // INC DE - Increment 16bit DE register
+                let value = self.de().wrapping_add(1);
+                self.set_de(value);
+
+                8
+            }
+            0x22 => {
+                // LD (HL+), A - Store A at HL address then increment HL
+                let address = self.hl();
+                memory.write_byte(address, self.a);
+
+                let new_hl = address.wrapping_add(1);
+                self.set_hl(new_hl);
+
+                8
+            }
+            0x33 => {
+                // INC SP
+                self.sp = self.sp.wrapping_add(1);
+
+                8
+            }
+            0x1B => {
+                // DEC DE
+                let value = self.de().wrapping_sub(1);
+                self.set_de(value);
+
+                8
+            }
+            0x2B => {
+                // DEC HL
+                let value = self.hl().wrapping_sub(1);
+                self.set_hl(value);
+
+                8
+            }
+            0x3B => {
+                // DEC SP
+                self.sp = self.sp.wrapping_sub(1);
+
+                8
+            }
+            0x0A => {
+                // LD A, (BC) - Load A from memory at BC address
+                let address = self.bc();
+                self.a = memory.read_byte(address);
+
+                8
+            }
+            0x02 => {
+                // LD (BC), A - Store A at BC address
+                let address = self.bc();
+                memory.write_byte(address, self.a);
+
+                8
+            }
+            0x12 => {
+                // LD (DE), A - Store A at DE address
+                let address = self.de();
+                memory.write_byte(address, self.a);
+
+                8
+            }
+            0x32 => {
+                // LD (HL-), A - Store A at HL, then decrement HL
+                let address = self.hl();
+                memory.write_byte(address, self.a);
+
+                let new_hl = address.wrapping_sub(1);
+                self.set_hl(new_hl);
+
+                8
+            }
+            0xC6 => {
+                // ADD A, n - Add immediate value to A
+                let value = memory.read_byte(self.pc);
+                self.pc += 1;
+
+                self.alu_add(value);
+
+                8
+            }
+            0x26 => {
+                // LD H, n - Load immediate value into H
+                let value = memory.read_byte(self.pc);
+                self.pc += 1;
+                self.h = value;
+
+                8
+            }
+            0x29 => {
+                // ADD HL, HL - Add HL to itself
+                let hl_value = self.hl();
+                let result = hl_value.wrapping_add(hl_value);
+                self.set_hl(result);
+
+                // Update flags
+                self.set_flag_n(false);
+                self.set_flag_h((hl_value & 0x0FFF) + (hl_value & 0x0FFF) > 0x0FFF);
+                self.set_flag_c((hl_value as u32) + (hl_value as u32) > 0xFFFF);
+
+                8
+            }
+            0x09 => {
+                // ADD HL, BC
+                let hl_value = self.hl();
+                let result = hl_value.wrapping_add(self.bc());
+                self.set_hl(result);
+
+                // Update flags
+                self.set_flag_n(false);
+                self.set_flag_h((hl_value & 0x0FFF) + (hl_value & 0x0FFF) > 0x0FFF);
+                self.set_flag_c((hl_value as u32) + (hl_value as u32) > 0xFFFF);
+
+                8
+            }
+            0x19 => {
+                // ADD HL, DE
+                let hl_value = self.hl();
+                let result = hl_value.wrapping_add(self.de());
+                self.set_hl(result);
+
+                // Update flags
+                self.set_flag_n(false);
+                self.set_flag_h((hl_value & 0x0FFF) + (hl_value & 0x0FFF) > 0x0FFF);
+                self.set_flag_c((hl_value as u32) + (hl_value as u32) > 0xFFFF);
+
+                8
+            }
+            0x39 => {
+                // ADD HL, SP
+                let hl_value = self.sp;
+                let result = hl_value.wrapping_add(self.de());
+                self.set_hl(result);
+
+                // Update flags
+                self.set_flag_n(false);
+                self.set_flag_h((hl_value & 0x0FFF) + (hl_value & 0x0FFF) > 0x0FFF);
+                self.set_flag_c((hl_value as u32) + (hl_value as u32) > 0xFFFF);
+
+                8
+            }
+            0x16 => {
+                // LD D, n
+                let value = memory.read_byte(self.pc);
+                self.pc += 1;
+                self.d = value;
+
+                8
+            }
+            0x1E => {
+                // LD E, n
+                let value = memory.read_byte(self.pc);
+                self.pc += 1;
+                self.e = value;
+
+                8
+            }
+            0x2E => {
+                // LD L, n
+                let value = memory.read_byte(self.pc);
+                self.pc += 1;
+                self.l = value;
+
+                8
+            }
+            0xCE => {
+                // ADC A, n - Add with carry
+                let value = memory.read_byte(self.pc);
+                self.pc += 1;
+                self.alu_adc(value);
+
+                8
+            }
+            0xDE => {
+                // SBC A, n - Substract with carry
+                let value = memory.read_byte(self.pc);
+                self.pc += 1;
+                self.alu_sbc(value);
+
+                8
+            }
+            0xEE => {
+                // XOR A, n
+                let value = memory.read_byte(self.pc);
+                self.pc += 1;
+                self.alu_xor(value);
+
+                8
+            }
+            0xF6 => {
+                // OR A, n
+                let value = memory.read_byte(self.pc);
+                self.pc += 1;
+                self.alu_or(value);
+
+                8
+            }
+            0x1F => {
+                // RRA - Rotate A right through carry
+                let old_carry = if self.flag_c() { 1 } else { 0 };
+                let new_carry = (self.a & 0x01) != 0;
+
+                self.a = (self.a >> 1) | (old_carry << 7);
+
+                // Update flags
+                self.set_flag_z(false);
+                self.set_flag_n(false);
+                self.set_flag_h(false);
+                self.set_flag_c(new_carry);
+
+                4
+            }
+            0xCB => {
+                let cb_opcode = memory.read_byte(self.pc);
+                self.pc += 1;
+
+                match cb_opcode {
+                    // RR r - Rotate Right through Carry
+                    0x18 => {
+                        // RR B
+                        let old_carry = if self.flag_c() { 0x80 } else { 0 };
+                        let new_carry = (self.b & 0x01) != 0;
+                        self.b = (self.b >> 1) | old_carry;
+                        self.set_flag_z(self.b == 0);
+                        self.set_flag_n(false);
+                        self.set_flag_h(false);
+                        self.set_flag_c(new_carry);
+                        8
+                    }
+
+                    0x19 => {
+                        // RR C
+                        let old_carry = if self.flag_c() { 0x80 } else { 0 };
+                        let new_carry = (self.c & 0x01) != 0;
+                        self.c = (self.c >> 1) | old_carry;
+                        self.set_flag_z(self.c == 0);
+                        self.set_flag_n(false);
+                        self.set_flag_h(false);
+                        self.set_flag_c(new_carry);
+                        8
+                    }
+
+                    0x1A => {
+                        // RR D
+                        let old_carry = if self.flag_c() { 0x80 } else { 0 };
+                        let new_carry = (self.d & 0x01) != 0;
+                        self.d = (self.d >> 1) | old_carry;
+                        self.set_flag_z(self.d == 0);
+                        self.set_flag_n(false);
+                        self.set_flag_h(false);
+                        self.set_flag_c(new_carry);
+                        8
+                    }
+
+                    // SRL r - Shift Right Logical
+                    0x38 => {
+                        // SRL B
+                        let new_carry = (self.b & 0x01) != 0;
+                        self.b = self.b >> 1;
+                        self.set_flag_z(self.b == 0);
+                        self.set_flag_n(false);
+                        self.set_flag_h(false);
+                        self.set_flag_c(new_carry);
+                        8
+                    }
+
+                    _ => {
+                        println!("CB opcode not implemented: 0x{:02X}", cb_opcode);
+                        8
+                    }
+                }
+            }
+            0x35 => {
+                // DEC (HL) - Decrement value at HL address
+                let address = self.hl();
+                let old_value = memory.read_byte(address);
+                let result = old_value.wrapping_sub(1);
+
+                memory.write_byte(address, result);
+
+                // Update flags
+                self.set_flag_z(result == 0);
+                self.set_flag_n(true);
+                self.set_flag_h((old_value & 0x0F) == 0x00);
+
+                12
             }
             _ => {
                 println!("Opcode not implemented: 0x{:02X}", opcode);

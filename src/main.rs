@@ -20,7 +20,7 @@ fn main() {
     cpu.pc = 0x0100; // cartridge boot address
 
     println!("Start ROM execution ...");
-    for i in 0..10000 {
+    for i in 0..50000 {
         let vblank = step(&mut cpu, &mut memory);
 
         if vblank {
