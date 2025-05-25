@@ -19,7 +19,7 @@ impl Default for PPU {
     }
 }
 
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum PPUMode {
     HBLank = 0,
     VBlank = 1,
@@ -71,7 +71,7 @@ impl PPU {
                     self.mode = PPUMode::HBLank;
                 }
             }
-            0xFF41 => self.stat = (self.stat & 0x07) | (value & 0xF8),
+            0xFF41 => self.stat = (self.stat & 0x07) | (value & 0xF8), // (current & 0000 0111) | (new_val & 1111 1000)
             0xFF42 => self.scy = value,
             0xFF43 => self.scx = value,
             0xFF44 => {} // readonly
@@ -145,5 +145,173 @@ impl PPU {
 
     pub fn is_lcd_enabled(&self) -> bool {
         (self.lcdc & 0x80) != 0
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn advance_ppu_lines(ppu: &mut PPU, lines: u32) {
+        let total_cycles = lines * 456;
+        let mut remaining = total_cycles;
+
+        while remaining > 0 {
+            let step_size = std::cmp::min(remaining, 100) as u8;
+            ppu.step(step_size);
+            remaining -= step_size as u32;
+        }
+    }
+
+    #[test]
+    fn test_ppu_new() {
+        let ppu = PPU::new();
+
+        assert_eq!(ppu.lcdc, 0x91);
+        assert_eq!(ppu.stat, 0x00);
+        assert_eq!(ppu.ly, 0x00);
+        assert_eq!(ppu.lyc, 0x00);
+        assert_eq!(ppu.scy, 0x00);
+        assert_eq!(ppu.scx, 0x00);
+        assert_eq!(ppu.wy, 0x00);
+        assert_eq!(ppu.wy, 0x00);
+        assert_eq!(ppu.cycles, 0);
+        assert_eq!(ppu.mode, PPUMode::OAMScan);
+
+        assert!(ppu.is_lcd_enabled());
+    }
+
+    #[test]
+    fn test_register_read_write() {
+        let mut ppu = PPU::new();
+
+        // LCDC
+        ppu.write_register(0xFF40, 0x85);
+        assert_eq!(ppu.read_register(0xFF40), 0x85);
+
+        // SCY/SCX
+        ppu.write_register(0xFF42, 0x10);
+        ppu.write_register(0xFF43, 0x20);
+        assert_eq!(ppu.read_register(0xFF42), 0x10);
+        assert_eq!(ppu.read_register(0xFF43), 0x20);
+
+        // LYC
+        ppu.write_register(0xFF45, 0x50);
+        assert_eq!(ppu.read_register(0xFF45), 0x50);
+
+        // Test Window
+        ppu.write_register(0xFF4A, 0x88);
+        ppu.write_register(0xFF4B, 0x07);
+        assert_eq!(ppu.read_register(0xFF4A), 0x88);
+        assert_eq!(ppu.read_register(0xFF4B), 0x07);
+    }
+
+    #[test]
+    fn test_ly_read_only() {
+        let mut ppu = PPU::new();
+
+        assert_eq!(ppu.read_register(0xFF44), 0x00);
+
+        ppu.write_register(0xFF44, 0x99);
+
+        assert_eq!(ppu.read_register(0xFF44), 0x00);
+    }
+
+    #[test]
+    fn test_stat_register() {
+        let mut ppu = PPU::new();
+
+        let initial_stat = ppu.read_register(0xFF41);
+
+        assert_eq!(initial_stat & 0x03, 0x02); // initial = 0x00 | OAMScan 0x02
+
+        ppu.write_register(0xFF41, 0x48);
+
+        let stat_after_write = ppu.read_register(0xFF41);
+
+        assert_eq!(stat_after_write & 0xF8, 0x48);
+        assert_eq!(stat_after_write & 0x03, 0x02);
+    }
+
+    #[test]
+    fn test_lcd_disable() {
+        let mut ppu = PPU::new();
+
+        advance_ppu_lines(&mut ppu, 1);
+        assert_eq!(ppu.ly, 1);
+        assert_eq!(ppu.read_register(0xFF41) & 0x03, 2);
+
+        ppu.write_register(0xFF40, 0x00);
+
+        assert_eq!(ppu.ly, 0);
+        assert_eq!(ppu.read_register(0xFF41) & 0x03, 0);
+        assert!(!ppu.is_lcd_enabled());
+
+        let old_ly = ppu.ly;
+        let vblank = ppu.step(255);
+
+        assert_eq!(ppu.ly, old_ly);
+        assert!(!vblank);
+    }
+
+    #[test]
+    fn test_oam_scan_to_drawing() {
+        let mut ppu = PPU::new();
+
+        assert_eq!(ppu.read_register(0xFF41) & 0x03, 2); // OAMScan
+
+        let vblank = ppu.step(79);
+
+        assert_eq!(ppu.read_register(0xFF41) & 0x03, 2); // OAMScan
+        assert!(!vblank);
+
+        let vblank = ppu.step(1);
+
+        assert_eq!(ppu.read_register(0xFF41) & 0x03, 3); // Drawing
+        assert!(!vblank);
+    }
+
+    #[test]
+    fn test_drawing_to_hblank() {
+        let mut ppu = PPU::new();
+
+        ppu.step(80);
+        assert_eq!(ppu.read_register(0xFF41) & 0x03, 3); // Drawing
+
+        let vblank = ppu.step(171);
+
+        assert_eq!(ppu.read_register(0xFF41) & 0x03, 3); // Drawing
+        assert!(!vblank);
+
+        let vblank = ppu.step(1);
+
+        assert_eq!(ppu.read_register(0xFF41) & 0x03, 0); // HBlank
+        assert!(!vblank);
+    }
+
+    #[test]
+    fn test_hblank_to_next_line() {
+        let mut ppu = PPU::new();
+
+        ppu.step(80); // OAMScan → Drawing
+        assert_eq!(ppu.read_register(0xFF41) & 0x03, 3); // Drawing
+
+        ppu.step(172); // Drawing → HBlank  
+        assert_eq!(ppu.read_register(0xFF41) & 0x03, 0); // HBlank ✅
+        assert_eq!(ppu.ly, 0);
+
+        let vblank = ppu.step(204);
+
+        assert_eq!(ppu.ly, 1);
+        assert_eq!(ppu.read_register(0xFF41) & 0x03, 2); // OAMScan
+        assert!(!vblank);
+    }
+
+    #[test]
+    fn test_not_implemented() {
+        let mut ppu = PPU::new();
+
+        ppu.write_register(0xFFFF, 0x10);
+        assert_eq!(ppu.read_register(0xFFFF), 0xFF);
     }
 }
