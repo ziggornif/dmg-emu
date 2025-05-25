@@ -19,6 +19,7 @@ fn main() {
 
     cpu.pc = 0x0100; // cartridge boot address
 
+    println!("Start ROM execution ...");
     for i in 0..10000 {
         let vblank = step(&mut cpu, &mut memory);
 
@@ -39,7 +40,7 @@ fn main() {
 
     println!("End of execution");
     println!(
-        "Final state - A: 0x{:02X}, B: 0x{:02X}, C: 0x{:02X}, D: 0x{:02X}, E: 0x{:02X}, H: 0x{:02X}, L: 0x{:02X}\nFlag Z: {}, Flag N: {}, Flag H: {}, Flag C: {}",
+        "=== Final state ===\nVariables:\nA: 0x{:02X}, B: 0x{:02X}, C: 0x{:02X}, D: 0x{:02X}, E: 0x{:02X}, H: 0x{:02X}, L: 0x{:02X}\nFlags:\nZ: {}, Flag N: {}, Flag H: {}, Flag C: {}",
         cpu.a,
         cpu.b,
         cpu.c,
