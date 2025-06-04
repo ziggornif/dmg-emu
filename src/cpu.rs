@@ -1,4 +1,5 @@
-use crate::memory::Memory;
+use crate::bus::Bus;
+use log::debug;
 
 const FLAG_Z: u8 = 0b10000000; // Zero
 const FLAG_N: u8 = 0b01000000; // Subtraction
@@ -42,7 +43,7 @@ impl CPU {
             h: 0,
             l: 0,
             sp: 0,
-            pc: 0,
+            pc: 0x0100,
             ime: false,
         }
     }
@@ -174,20 +175,31 @@ impl CPU {
         self.set_flag_c((old_a as u16) < (value as u16));
     }
 
-    fn stack_push(&mut self, memory: &mut Memory, value: u16) {
+    fn stack_push(&mut self, bus: &mut Bus, value: u16) {
+        debug!(
+            "PUSH: SP before = 0x{:04X}, value = 0x{:04X}",
+            self.sp, value
+        );
         self.sp = self.sp.wrapping_sub(1);
-        memory.write_byte(self.sp, (value >> 8) as u8);
+        bus.write_byte(self.sp, (value >> 8) as u8);
         self.sp = self.sp.wrapping_sub(1);
-        memory.write_byte(self.sp, value as u8);
+        bus.write_byte(self.sp, value as u8);
+        debug!("PUSH: SP after = 0x{:04X}", self.sp);
     }
 
-    fn stack_pop(&mut self, memory: &mut Memory) -> u16 {
-        let low = memory.read_byte(self.sp) as u16;
+    fn stack_pop(&mut self, bus: &mut Bus) -> u16 {
+        debug!("POP: SP before = 0x{:04X}", self.sp);
+        let low = bus.read_byte(self.sp) as u16;
         self.sp = self.sp.wrapping_add(1);
-        let high = memory.read_byte(self.sp) as u16;
+        let high = bus.read_byte(self.sp) as u16;
         self.sp = self.sp.wrapping_add(1);
 
-        (high << 8) | low
+        let result = (high << 8) | low;
+        debug!(
+            "POP: SP after = 0x{:04X}, value = 0x{:04X}",
+            self.sp, result
+        );
+        result
     }
 
     pub fn af(&self) -> u16 {
@@ -278,7 +290,11 @@ impl CPU {
         self.ime
     }
 
-    pub fn execute_instruction(&mut self, opcode: u8, memory: &mut Memory) -> u8 {
+    pub fn disable_interrupts(&mut self) {
+        self.ime = false;
+    }
+
+    pub fn execute_instruction(&mut self, opcode: u8, bus: &mut Bus) -> u8 {
         match opcode {
             0x00 => {
                 // NOP
@@ -286,9 +302,9 @@ impl CPU {
             }
             0x01 => {
                 // LD BC, nn - Load 16bits immediate into BC
-                let low = memory.read_byte(self.pc);
+                let low = bus.read_byte(self.pc);
                 self.pc += 1;
-                let high = memory.read_byte(self.pc);
+                let high = bus.read_byte(self.pc);
                 self.pc += 1;
 
                 let value = ((high as u16) << 8) | (low as u16);
@@ -325,7 +341,7 @@ impl CPU {
             }
             0x06 => {
                 // LD B, n - Load immediate value into B
-                let value = memory.read_byte(self.pc);
+                let value = bus.read_byte(self.pc);
                 self.b = value;
                 self.pc += 1;
                 8
@@ -358,23 +374,25 @@ impl CPU {
             }
             0x3E => {
                 // LD A, n - Load immediate value into A
-                let value = memory.read_byte(self.pc);
+                let value = bus.read_byte(self.pc);
                 self.a = value;
                 self.pc += 1;
                 8
             }
             0x18 => {
                 // JR r8 - Jump relative
-                let offset = memory.read_byte(self.pc) as i8; // to get offset sign
+                let offset = bus.read_byte(self.pc) as i8; // to get offset sign
                 self.pc += 1;
+                let old_pc = self.pc;
 
                 self.pc = ((self.pc as i32) + (offset as i32)) as u16;
+                debug!("JR: 0x{:04X} + {} = 0x{:04X}", old_pc, offset, self.pc);
 
                 12
             }
             0x28 => {
                 // JR Z, r8 - Jump relative if zero flag is set
-                let offset = memory.read_byte(self.pc) as i8;
+                let offset = bus.read_byte(self.pc) as i8;
                 self.pc += 1;
 
                 if self.flag_z() {
@@ -391,20 +409,20 @@ impl CPU {
 
                 // 0x76 = HALT
                 if opcode == 0x76 {
-                    println!("HALT instruction");
+                    debug!("HALT instruction");
                     return 4;
                 }
 
                 if dest_reg == 6 {
                     let address = self.hl();
                     let value = self.get_register(src_reg);
-                    memory.write_byte(address, value);
+                    bus.write_byte(address, value);
                     return 8;
                 }
 
                 if src_reg == 6 {
                     let address = self.hl();
-                    let value = memory.read_byte(address);
+                    let value = bus.read_byte(address);
                     self.set_register(dest_reg, value);
                     return 8;
                 }
@@ -422,7 +440,7 @@ impl CPU {
 
                 let src_value = if src_reg == 6 {
                     // HL case - memory access
-                    memory.read_byte(self.hl())
+                    bus.read_byte(self.hl())
                 } else {
                     self.get_register(src_reg)
                 };
@@ -444,61 +462,63 @@ impl CPU {
             0xC5 => {
                 // PUSH BC
                 let value = self.bc();
-                self.stack_push(memory, value);
+                self.stack_push(bus, value);
                 16
             }
             0xD5 => {
                 // PUSH DE
                 let value = self.de();
-                self.stack_push(memory, value);
+                self.stack_push(bus, value);
                 16
             }
             0xE5 => {
                 // PUSH HL
                 let value = self.hl();
-                self.stack_push(memory, value);
+                self.stack_push(bus, value);
                 16
             }
             0xF5 => {
                 // PUSH AF
                 let value = self.af();
-                self.stack_push(memory, value);
+                self.stack_push(bus, value);
                 16
             }
             0xC1 => {
                 // POP BC
-                let value = self.stack_pop(memory);
+                let value = self.stack_pop(bus);
                 self.set_bc(value);
                 12
             }
             0xD1 => {
                 // POP DE
-                let value = self.stack_pop(memory);
+                let value = self.stack_pop(bus);
                 self.set_de(value);
                 12
             }
             0xE1 => {
                 // POP HL
-                let value = self.stack_pop(memory);
+                let value = self.stack_pop(bus);
                 self.set_hl(value);
                 12
             }
             0xF1 => {
                 // POP AF
-                let value = self.stack_pop(memory);
+                let value = self.stack_pop(bus);
                 self.set_af(value);
                 12
             }
             0xCD => {
                 // CALL nn - Call function
-                let low = memory.read_byte(self.pc) as u16;
+                let low = bus.read_byte(self.pc) as u16;
                 self.pc += 1;
-                let high = memory.read_byte(self.pc) as u16;
+                let high = bus.read_byte(self.pc) as u16;
                 self.pc += 1;
                 let address = (high << 8) | low;
 
+                debug!("CALL: Calling 0x{:04X} from 0x{:04X}", address, self.pc);
+
                 // store current address
-                self.stack_push(memory, self.pc);
+                self.stack_push(bus, self.pc);
 
                 // jump to function address
                 self.pc = address;
@@ -507,14 +527,14 @@ impl CPU {
             }
             0xC9 => {
                 // RET - Return from function
-                self.pc = self.stack_pop(memory);
+                self.pc = self.stack_pop(bus);
                 16
             }
             0xC3 => {
                 // JP nn - Jump absolute
-                let low = memory.read_byte(self.pc) as u16;
+                let low = bus.read_byte(self.pc) as u16;
                 self.pc += 1;
-                let high = memory.read_byte(self.pc) as u16;
+                let high = bus.read_byte(self.pc) as u16;
                 self.pc += 1;
                 let address = (high << 8) | low;
 
@@ -524,9 +544,9 @@ impl CPU {
             }
             0xC2 => {
                 // JP NZ, nn
-                let low = memory.read_byte(self.pc) as u16;
+                let low = bus.read_byte(self.pc) as u16;
                 self.pc += 1;
-                let high = memory.read_byte(self.pc) as u16;
+                let high = bus.read_byte(self.pc) as u16;
                 self.pc += 1;
                 let address = (high << 8) | low;
 
@@ -539,9 +559,9 @@ impl CPU {
             }
             0xCA => {
                 // JP Z, nn
-                let low = memory.read_byte(self.pc) as u16;
+                let low = bus.read_byte(self.pc) as u16;
                 self.pc += 1;
-                let high = memory.read_byte(self.pc) as u16;
+                let high = bus.read_byte(self.pc) as u16;
                 self.pc += 1;
                 let address = (high << 8) | low;
 
@@ -554,9 +574,9 @@ impl CPU {
             }
             0xD2 => {
                 // JP NC, nn
-                let low = memory.read_byte(self.pc) as u16;
+                let low = bus.read_byte(self.pc) as u16;
                 self.pc += 1;
-                let high = memory.read_byte(self.pc) as u16;
+                let high = bus.read_byte(self.pc) as u16;
                 self.pc += 1;
                 let address = (high << 8) | low;
 
@@ -569,9 +589,9 @@ impl CPU {
             }
             0xDA => {
                 // JP C, nn
-                let low = memory.read_byte(self.pc) as u16;
+                let low = bus.read_byte(self.pc) as u16;
                 self.pc += 1;
-                let high = memory.read_byte(self.pc) as u16;
+                let high = bus.read_byte(self.pc) as u16;
                 self.pc += 1;
                 let address = (high << 8) | low;
 
@@ -585,7 +605,7 @@ impl CPU {
             0xC0 => {
                 // RET NZ
                 if !self.flag_z() {
-                    self.pc = self.stack_pop(memory);
+                    self.pc = self.stack_pop(bus);
                     20
                 } else {
                     8
@@ -594,7 +614,7 @@ impl CPU {
             0xC8 => {
                 // RET Z
                 if self.flag_z() {
-                    self.pc = self.stack_pop(memory);
+                    self.pc = self.stack_pop(bus);
                     20
                 } else {
                     8
@@ -603,7 +623,7 @@ impl CPU {
             0xD0 => {
                 // RET NC
                 if !self.flag_c() {
-                    self.pc = self.stack_pop(memory);
+                    self.pc = self.stack_pop(bus);
                     20
                 } else {
                     8
@@ -612,7 +632,7 @@ impl CPU {
             0xD8 => {
                 // RET C
                 if self.flag_c() {
-                    self.pc = self.stack_pop(memory);
+                    self.pc = self.stack_pop(bus);
                     20
                 } else {
                     8
@@ -620,7 +640,7 @@ impl CPU {
             }
             0x20 => {
                 // JR NZ, r8
-                let offset = memory.read_byte(self.pc) as i8;
+                let offset = bus.read_byte(self.pc) as i8;
                 self.pc += 1;
 
                 if !self.flag_z() {
@@ -632,7 +652,7 @@ impl CPU {
             }
             0x30 => {
                 // JR NC, r8
-                let offset = memory.read_byte(self.pc) as i8;
+                let offset = bus.read_byte(self.pc) as i8;
                 self.pc += 1;
 
                 if !self.flag_c() {
@@ -644,7 +664,7 @@ impl CPU {
             }
             0x38 => {
                 // JR C, r8
-                let offset = memory.read_byte(self.pc) as i8;
+                let offset = bus.read_byte(self.pc) as i8;
                 self.pc += 1;
 
                 if self.flag_c() {
@@ -668,9 +688,9 @@ impl CPU {
             }
             0x31 => {
                 // LD SP, nn - Load 16bits immediate into SP
-                let low = memory.read_byte(self.pc) as u16;
+                let low = bus.read_byte(self.pc) as u16;
                 self.pc += 1;
-                let high = memory.read_byte(self.pc) as u16;
+                let high = bus.read_byte(self.pc) as u16;
                 self.pc += 1;
 
                 self.sp = (high << 8) | low;
@@ -679,7 +699,7 @@ impl CPU {
             }
             0xD6 => {
                 // SUB A, n - Substract immediate from A
-                let value = memory.read_byte(self.pc);
+                let value = bus.read_byte(self.pc);
                 self.pc += 1;
 
                 self.alu_sub(value);
@@ -688,8 +708,10 @@ impl CPU {
             }
             0xFE => {
                 // CP A, n - Compare A with immediate
-                let value = memory.read_byte(self.pc);
+                let value = bus.read_byte(self.pc);
                 self.pc += 1;
+
+                debug!("CP: A=0x{:02X} compare with 0x{:02X}", self.a, value);
 
                 self.alu_cp(value);
 
@@ -697,23 +719,23 @@ impl CPU {
             }
             0xE0 => {
                 // LDH (n), A - Load A into 0xFF00+n
-                let offset = memory.read_byte(self.pc);
+                let offset = bus.read_byte(self.pc);
                 self.pc += 1;
 
                 let address = 0xFF00 + (offset as u16);
-                memory.write_byte(address, self.a);
+                bus.write_byte(address, self.a);
 
                 12
             }
             0xEA => {
                 // LD (nn), A - Load A into absolute address
-                let low = memory.read_byte(self.pc) as u16;
+                let low = bus.read_byte(self.pc) as u16;
                 self.pc += 1;
-                let high = memory.read_byte(self.pc) as u16;
+                let high = bus.read_byte(self.pc) as u16;
                 self.pc += 1;
 
                 let address = (high << 8) | low;
-                memory.write_byte(address, self.a);
+                bus.write_byte(address, self.a);
 
                 16
             }
@@ -759,9 +781,9 @@ impl CPU {
             }
             0x21 => {
                 // LD HL, nn - Load immediate into HL
-                let low = memory.read_byte(self.pc) as u16;
+                let low = bus.read_byte(self.pc) as u16;
                 self.pc += 1;
-                let high = memory.read_byte(self.pc) as u16;
+                let high = bus.read_byte(self.pc) as u16;
                 self.pc += 1;
 
                 let value = (high << 8) | low;
@@ -779,7 +801,7 @@ impl CPU {
             0x2A => {
                 // LD A, (HL+) - Load A then increment HL
                 let address = self.hl();
-                self.a = memory.read_byte(address);
+                self.a = bus.read_byte(address);
 
                 let new_hl = address.wrapping_add(1);
                 self.set_hl(new_hl);
@@ -788,23 +810,28 @@ impl CPU {
             }
             0xF0 => {
                 // LDH A, n - Load A from 0xFF00+n
-                let offset = memory.read_byte(self.pc);
+                let offset = bus.read_byte(self.pc);
                 self.pc += 1;
 
                 let address = 0xFF00 + (offset as u16);
-                self.a = memory.read_byte(address);
+                self.a = bus.read_byte(address);
+
+                debug!(
+                    "LDH: Read 0x{:02X} from 0xFF{:02X} (=0x{:04X})",
+                    self.a, offset, address
+                );
 
                 12
             }
             0xFA => {
                 // LD (HL), A - Load A from absolute address
-                let low = memory.read_byte(self.pc) as u16;
+                let low = bus.read_byte(self.pc) as u16;
                 self.pc += 1;
-                let high = memory.read_byte(self.pc) as u16;
+                let high = bus.read_byte(self.pc) as u16;
                 self.pc += 1;
 
                 let address = (high << 8) | low;
-                self.a = memory.read_byte(address);
+                self.a = bus.read_byte(address);
 
                 16
             }
@@ -823,27 +850,29 @@ impl CPU {
             }
             0xC4 => {
                 // CALL NZ, nn - Call function if not zero
-                let low = memory.read_byte(self.pc) as u16;
+                let low = bus.read_byte(self.pc) as u16;
                 self.pc += 1;
-                let high = memory.read_byte(self.pc) as u16;
+                let high = bus.read_byte(self.pc) as u16;
                 self.pc += 1;
 
                 let address = (high << 8) | low;
 
                 if !self.flag_z() {
-                    self.stack_push(memory, self.pc);
+                    debug!("CALL NZ: Calling 0x{:04X} from 0x{:04X}", address, self.pc);
+                    self.stack_push(bus, self.pc);
                     self.pc = address;
                     24
                 } else {
+                    debug!("CALL NZ: Skipped (Z=1)");
                     12
                 }
             }
             0x10 => {
                 // STOP - Stop CPU until interrupt occurs
-                let _next_byte = memory.read_byte(self.pc);
+                let _next_byte = bus.read_byte(self.pc);
                 self.pc += 1;
 
-                println!("STOP instruction executed - continuing ...");
+                debug!("STOP instruction executed - continuing ...");
 
                 4
             }
@@ -966,7 +995,7 @@ impl CPU {
             }
             0xE6 => {
                 // AND A, n - Logical AND with immediate value
-                let value = memory.read_byte(self.pc);
+                let value = bus.read_byte(self.pc);
                 self.pc += 1;
 
                 self.alu_and(value);
@@ -975,7 +1004,7 @@ impl CPU {
             }
             0x0E => {
                 // LD C, n - Load immediate into C
-                let value = memory.read_byte(self.pc);
+                let value = bus.read_byte(self.pc);
                 self.pc += 1;
                 self.c = value;
 
@@ -983,9 +1012,9 @@ impl CPU {
             }
             0x11 => {
                 // LD DE, nn - Load 16bit immediate into DE
-                let low = memory.read_byte(self.pc) as u16;
+                let low = bus.read_byte(self.pc) as u16;
                 self.pc += 1;
-                let high = memory.read_byte(self.pc) as u16;
+                let high = bus.read_byte(self.pc) as u16;
                 self.pc += 1;
 
                 let value = (high << 8) | low;
@@ -995,22 +1024,22 @@ impl CPU {
             }
             0x08 => {
                 // LD (nn), SP - Store stack pointer at absolute address
-                let low = memory.read_byte(self.pc) as u16;
+                let low = bus.read_byte(self.pc) as u16;
                 self.pc += 1;
-                let high = memory.read_byte(self.pc) as u16;
+                let high = bus.read_byte(self.pc) as u16;
                 self.pc += 1;
 
                 let address = (high << 8) | low;
 
-                memory.write_byte(address, self.sp as u8);
-                memory.write_byte(address + 1, (self.sp >> 8) as u8);
+                bus.write_byte(address, self.sp as u8);
+                bus.write_byte(address + 1, (self.sp >> 8) as u8);
 
                 20
             }
             0x1A => {
                 // LD A, (DE) - Load A from memory at DE address
                 let address = self.de();
-                self.a = memory.read_byte(address);
+                self.a = bus.read_byte(address);
 
                 8
             }
@@ -1024,7 +1053,7 @@ impl CPU {
             0x22 => {
                 // LD (HL+), A - Store A at HL address then increment HL
                 let address = self.hl();
-                memory.write_byte(address, self.a);
+                bus.write_byte(address, self.a);
 
                 let new_hl = address.wrapping_add(1);
                 self.set_hl(new_hl);
@@ -1060,28 +1089,28 @@ impl CPU {
             0x0A => {
                 // LD A, (BC) - Load A from memory at BC address
                 let address = self.bc();
-                self.a = memory.read_byte(address);
+                self.a = bus.read_byte(address);
 
                 8
             }
             0x02 => {
                 // LD (BC), A - Store A at BC address
                 let address = self.bc();
-                memory.write_byte(address, self.a);
+                bus.write_byte(address, self.a);
 
                 8
             }
             0x12 => {
                 // LD (DE), A - Store A at DE address
                 let address = self.de();
-                memory.write_byte(address, self.a);
+                bus.write_byte(address, self.a);
 
                 8
             }
             0x32 => {
                 // LD (HL-), A - Store A at HL, then decrement HL
                 let address = self.hl();
-                memory.write_byte(address, self.a);
+                bus.write_byte(address, self.a);
 
                 let new_hl = address.wrapping_sub(1);
                 self.set_hl(new_hl);
@@ -1090,7 +1119,7 @@ impl CPU {
             }
             0xC6 => {
                 // ADD A, n - Add immediate value to A
-                let value = memory.read_byte(self.pc);
+                let value = bus.read_byte(self.pc);
                 self.pc += 1;
 
                 self.alu_add(value);
@@ -1099,7 +1128,7 @@ impl CPU {
             }
             0x26 => {
                 // LD H, n - Load immediate value into H
-                let value = memory.read_byte(self.pc);
+                let value = bus.read_byte(self.pc);
                 self.pc += 1;
                 self.h = value;
 
@@ -1121,45 +1150,48 @@ impl CPU {
             0x09 => {
                 // ADD HL, BC
                 let hl_value = self.hl();
+                let bc_value = self.bc();
                 let result = hl_value.wrapping_add(self.bc());
                 self.set_hl(result);
 
                 // Update flags
                 self.set_flag_n(false);
-                self.set_flag_h((hl_value & 0x0FFF) + (hl_value & 0x0FFF) > 0x0FFF);
-                self.set_flag_c((hl_value as u32) + (hl_value as u32) > 0xFFFF);
+                self.set_flag_h((hl_value & 0x0FFF) + (bc_value & 0x0FFF) > 0x0FFF);
+                self.set_flag_c((hl_value as u32) + (bc_value as u32) > 0xFFFF);
 
                 8
             }
             0x19 => {
                 // ADD HL, DE
                 let hl_value = self.hl();
-                let result = hl_value.wrapping_add(self.de());
+                let de_value = self.de();
+                let result = hl_value.wrapping_add(de_value);
                 self.set_hl(result);
 
                 // Update flags
                 self.set_flag_n(false);
-                self.set_flag_h((hl_value & 0x0FFF) + (hl_value & 0x0FFF) > 0x0FFF);
-                self.set_flag_c((hl_value as u32) + (hl_value as u32) > 0xFFFF);
+                self.set_flag_h((hl_value & 0x0FFF) + (de_value & 0x0FFF) > 0x0FFF);
+                self.set_flag_c((hl_value as u32) + (de_value as u32) > 0xFFFF);
 
                 8
             }
             0x39 => {
                 // ADD HL, SP
                 let hl_value = self.sp;
-                let result = hl_value.wrapping_add(self.de());
+                let sp_value = self.sp;
+                let result = hl_value.wrapping_add(sp_value);
                 self.set_hl(result);
 
                 // Update flags
                 self.set_flag_n(false);
-                self.set_flag_h((hl_value & 0x0FFF) + (hl_value & 0x0FFF) > 0x0FFF);
-                self.set_flag_c((hl_value as u32) + (hl_value as u32) > 0xFFFF);
+                self.set_flag_h((hl_value & 0x0FFF) + (sp_value & 0x0FFF) > 0x0FFF);
+                self.set_flag_c((hl_value as u32) + (sp_value as u32) > 0xFFFF);
 
                 8
             }
             0x16 => {
                 // LD D, n
-                let value = memory.read_byte(self.pc);
+                let value = bus.read_byte(self.pc);
                 self.pc += 1;
                 self.d = value;
 
@@ -1167,7 +1199,7 @@ impl CPU {
             }
             0x1E => {
                 // LD E, n
-                let value = memory.read_byte(self.pc);
+                let value = bus.read_byte(self.pc);
                 self.pc += 1;
                 self.e = value;
 
@@ -1175,7 +1207,7 @@ impl CPU {
             }
             0x2E => {
                 // LD L, n
-                let value = memory.read_byte(self.pc);
+                let value = bus.read_byte(self.pc);
                 self.pc += 1;
                 self.l = value;
 
@@ -1183,7 +1215,7 @@ impl CPU {
             }
             0xCE => {
                 // ADC A, n - Add with carry
-                let value = memory.read_byte(self.pc);
+                let value = bus.read_byte(self.pc);
                 self.pc += 1;
                 self.alu_adc(value);
 
@@ -1191,7 +1223,7 @@ impl CPU {
             }
             0xDE => {
                 // SBC A, n - Substract with carry
-                let value = memory.read_byte(self.pc);
+                let value = bus.read_byte(self.pc);
                 self.pc += 1;
                 self.alu_sbc(value);
 
@@ -1199,7 +1231,7 @@ impl CPU {
             }
             0xEE => {
                 // XOR A, n
-                let value = memory.read_byte(self.pc);
+                let value = bus.read_byte(self.pc);
                 self.pc += 1;
                 self.alu_xor(value);
 
@@ -1207,7 +1239,7 @@ impl CPU {
             }
             0xF6 => {
                 // OR A, n
-                let value = memory.read_byte(self.pc);
+                let value = bus.read_byte(self.pc);
                 self.pc += 1;
                 self.alu_or(value);
 
@@ -1229,7 +1261,7 @@ impl CPU {
                 4
             }
             0xCB => {
-                let cb_opcode = memory.read_byte(self.pc);
+                let cb_opcode = bus.read_byte(self.pc);
                 self.pc += 1;
 
                 match cb_opcode {
@@ -1274,7 +1306,7 @@ impl CPU {
                     0x38 => {
                         // SRL B
                         let new_carry = (self.b & 0x01) != 0;
-                        self.b = self.b >> 1;
+                        self.b >>= 1;
                         self.set_flag_z(self.b == 0);
                         self.set_flag_n(false);
                         self.set_flag_h(false);
@@ -1282,8 +1314,29 @@ impl CPU {
                         8
                     }
 
+                    0x3F => {
+                        // SRL A
+                        let new_carry = (self.b & 0x01) != 0;
+                        self.a >>= 1;
+                        self.set_flag_z(self.a == 0);
+                        self.set_flag_n(false);
+                        self.set_flag_h(false);
+                        self.set_flag_c(new_carry);
+                        8
+                    }
+
+                    0x37 => {
+                        // SWAP A - Swap upper and lower 4 bits
+                        self.a = (self.a << 4) | (self.a >> 4);
+                        self.set_flag_z(self.a == 0);
+                        self.set_flag_n(false);
+                        self.set_flag_h(false);
+                        self.set_flag_c(false);
+                        8
+                    }
+
                     _ => {
-                        println!("CB opcode not implemented: 0x{:02X}", cb_opcode);
+                        debug!("CB opcode not implemented: 0x{:02X}", cb_opcode);
                         8
                     }
                 }
@@ -1291,10 +1344,10 @@ impl CPU {
             0x35 => {
                 // DEC (HL) - Decrement value at HL address
                 let address = self.hl();
-                let old_value = memory.read_byte(address);
+                let old_value = bus.read_byte(address);
                 let result = old_value.wrapping_sub(1);
 
-                memory.write_byte(address, result);
+                bus.write_byte(address, result);
 
                 // Update flags
                 self.set_flag_z(result == 0);
@@ -1303,1488 +1356,69 @@ impl CPU {
 
                 12
             }
+            0xE9 => {
+                // JP (HL) - Jump to address contained in HL
+                self.pc = self.hl();
+                4
+            }
+
+            0xFF => {
+                // RST 38H - Call to 0x0038
+                self.stack_push(bus, self.pc);
+                self.pc = 0x0038;
+                16
+            }
+            0x27 => {
+                // DAA - Decimal Adjust Accumulator
+                let mut a = self.a;
+
+                if !self.flag_n() {
+                    // Addition
+                    if self.flag_h() || (a & 0x0F) > 0x09 {
+                        a = a.wrapping_add(0x06);
+                    }
+
+                    if self.flag_c() || a > 0x99 {
+                        a = a.wrapping_add(0x60);
+                        self.set_flag_c(true);
+                    }
+                } else {
+                    // Subtraction
+                    if self.flag_c() {
+                        a = a.wrapping_sub(0x60);
+                    }
+
+                    if self.flag_h() {
+                        a = a.wrapping_sub(0x06);
+                    }
+                }
+
+                self.a = a;
+
+                self.set_flag_z(a == 0);
+                self.set_flag_h(false);
+
+                4
+            }
+            0xF9 => {
+                // LD SP, HL - Load HL into SP
+                self.sp = self.hl();
+                8
+            }
+            0x2F => {
+                // CPL  - Complement A
+                self.a = !self.a;
+
+                // Update flags
+                self.set_flag_n(true);
+                self.set_flag_h(true);
+
+                4
+            }
             _ => {
-                println!("Opcode not implemented: 0x{:02X}", opcode);
+                debug!("Opcode not implemented: 0x{:02X}", opcode);
                 4
             }
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::memory::Memory;
-
-    #[test]
-    fn test_nop() {
-        let mut cpu = CPU::new();
-        let mut memory = Memory::new();
-
-        let cycles = cpu.execute_instruction(0x00, &mut memory);
-
-        assert_eq!(cycles, 4);
-        assert_eq!(cpu.pc, 0);
-    }
-
-    #[test]
-    fn test_ld_a_immediate() {
-        let mut cpu = CPU::new();
-        let mut memory = Memory::new();
-
-        cpu.pc = 0x100;
-        memory.write_byte(0x100, 0x42);
-
-        let cycles = cpu.execute_instruction(0x3E, &mut memory);
-
-        assert_eq!(cycles, 8);
-        assert_eq!(cpu.pc, 0x101);
-        assert_eq!(cpu.a, 0x42);
-        assert_eq!(cpu.b, 0x00);
-    }
-
-    #[test]
-    fn test_ld_b_immediate() {
-        let mut cpu = CPU::new();
-        let mut memory = Memory::new();
-
-        cpu.pc = 0x104;
-        memory.write_byte(0x104, 0x0F);
-
-        let cycles = cpu.execute_instruction(0x06, &mut memory);
-
-        assert_eq!(cycles, 8);
-        assert_eq!(cpu.pc, 0x105);
-        assert_eq!(cpu.a, 0x00);
-        assert_eq!(cpu.b, 0x0F);
-    }
-
-    #[test]
-    fn test_inc_a() {
-        let mut cpu = CPU::new();
-        let mut memory = Memory::new();
-
-        cpu.a = 0x0E;
-
-        let cycles = cpu.execute_instruction(0x3C, &mut memory);
-
-        assert_eq!(cycles, 4);
-        assert_eq!(cpu.a, 0x0F);
-        assert_eq!(cpu.flag_z(), false);
-        assert_eq!(cpu.flag_n(), false);
-        assert_eq!(cpu.flag_h(), false);
-    }
-
-    #[test]
-    fn test_inc_a_zero() {
-        let mut cpu = CPU::new();
-        let mut memory = Memory::new();
-
-        cpu.a = 0xFF;
-
-        let cycles = cpu.execute_instruction(0x3C, &mut memory);
-
-        assert_eq!(cycles, 4);
-        assert_eq!(cpu.a, 0x00);
-        assert_eq!(cpu.flag_z(), true);
-        assert_eq!(cpu.flag_n(), false);
-        assert_eq!(cpu.flag_h(), true);
-    }
-
-    #[test]
-    fn test_inc_a_overflow() {
-        let mut cpu = CPU::new();
-        let mut memory = Memory::new();
-
-        cpu.a = 0x0F;
-
-        let cycles = cpu.execute_instruction(0x3C, &mut memory);
-
-        assert_eq!(cycles, 4);
-        assert_eq!(cpu.a, 0x10);
-        assert_eq!(cpu.flag_z(), false);
-        assert_eq!(cpu.flag_n(), false);
-        assert_eq!(cpu.flag_h(), true);
-    }
-
-    #[test]
-    fn test_dec_a() {
-        let mut cpu = CPU::new();
-        let mut memory = Memory::new();
-
-        cpu.a = 0x0E;
-
-        let cycles = cpu.execute_instruction(0x3D, &mut memory);
-
-        assert_eq!(cycles, 4);
-        assert_eq!(cpu.a, 0x0D);
-        assert_eq!(cpu.flag_z(), false);
-        assert_eq!(cpu.flag_n(), true);
-        assert_eq!(cpu.flag_h(), false);
-    }
-
-    #[test]
-    fn test_dec_a_zero() {
-        let mut cpu = CPU::new();
-        let mut memory = Memory::new();
-
-        cpu.a = 0x01;
-
-        let cycles = cpu.execute_instruction(0x3D, &mut memory);
-
-        assert_eq!(cycles, 4);
-        assert_eq!(cpu.a, 0x00);
-        assert_eq!(cpu.flag_z(), true);
-        assert_eq!(cpu.flag_n(), true);
-        assert_eq!(cpu.flag_h(), false);
-    }
-
-    #[test]
-    fn test_dec_a_overflow() {
-        let mut cpu = CPU::new();
-        let mut memory = Memory::new();
-
-        cpu.a = 0x10;
-
-        let cycles = cpu.execute_instruction(0x3D, &mut memory);
-
-        assert_eq!(cycles, 4);
-        assert_eq!(cpu.a, 0x0F);
-        assert_eq!(cpu.flag_z(), false);
-        assert_eq!(cpu.flag_n(), true);
-        assert_eq!(cpu.flag_h(), true);
-    }
-
-    #[test]
-    fn test_inc_b() {
-        let mut cpu = CPU::new();
-        let mut memory = Memory::new();
-
-        cpu.b = 0x0E;
-
-        let cycles = cpu.execute_instruction(0x04, &mut memory);
-
-        assert_eq!(cycles, 4);
-        assert_eq!(cpu.b, 0x0F);
-        assert_eq!(cpu.flag_z(), false);
-        assert_eq!(cpu.flag_n(), false);
-        assert_eq!(cpu.flag_h(), false);
-    }
-
-    #[test]
-    fn test_inc_b_zero() {
-        let mut cpu = CPU::new();
-        let mut memory = Memory::new();
-
-        cpu.b = 0xFF;
-
-        let cycles = cpu.execute_instruction(0x04, &mut memory);
-
-        assert_eq!(cycles, 4);
-        assert_eq!(cpu.b, 0x00);
-        assert_eq!(cpu.flag_z(), true);
-        assert_eq!(cpu.flag_n(), false);
-        assert_eq!(cpu.flag_h(), true);
-    }
-
-    #[test]
-    fn test_inc_b_overflow() {
-        let mut cpu = CPU::new();
-        let mut memory = Memory::new();
-
-        cpu.b = 0x0F;
-
-        let cycles = cpu.execute_instruction(0x04, &mut memory);
-
-        assert_eq!(cycles, 4);
-        assert_eq!(cpu.b, 0x10);
-        assert_eq!(cpu.flag_z(), false);
-        assert_eq!(cpu.flag_n(), false);
-        assert_eq!(cpu.flag_h(), true);
-    }
-
-    #[test]
-    fn test_dec_b() {
-        let mut cpu = CPU::new();
-        let mut memory = Memory::new();
-
-        cpu.b = 0x0E;
-
-        let cycles = cpu.execute_instruction(0x05, &mut memory);
-
-        assert_eq!(cycles, 4);
-        assert_eq!(cpu.b, 0x0D);
-        assert_eq!(cpu.flag_z(), false);
-        assert_eq!(cpu.flag_n(), true);
-        assert_eq!(cpu.flag_h(), false);
-    }
-
-    #[test]
-    fn test_dec_b_zero() {
-        let mut cpu = CPU::new();
-        let mut memory = Memory::new();
-
-        cpu.b = 0x01;
-
-        let cycles = cpu.execute_instruction(0x05, &mut memory);
-
-        assert_eq!(cycles, 4);
-        assert_eq!(cpu.b, 0x00);
-        assert_eq!(cpu.flag_z(), true);
-        assert_eq!(cpu.flag_n(), true);
-        assert_eq!(cpu.flag_h(), false);
-    }
-
-    #[test]
-    fn test_dec_b_overflow() {
-        let mut cpu = CPU::new();
-        let mut memory = Memory::new();
-
-        cpu.b = 0x10;
-
-        let cycles = cpu.execute_instruction(0x05, &mut memory);
-
-        assert_eq!(cycles, 4);
-        assert_eq!(cpu.b, 0x0F);
-        assert_eq!(cpu.flag_z(), false);
-        assert_eq!(cpu.flag_n(), true);
-        assert_eq!(cpu.flag_h(), true);
-    }
-
-    #[test]
-    fn test_ld_bc_immediate() {
-        let mut cpu = CPU::new();
-        let mut memory = Memory::new();
-
-        cpu.pc = 0x100;
-        memory.write_byte(0x100, 0x42);
-        memory.write_byte(0x101, 0x10);
-
-        let cycles = cpu.execute_instruction(0x01, &mut memory);
-
-        assert_eq!(cycles, 12);
-        assert_eq!(cpu.pc, 0x102);
-        assert_eq!(cpu.bc(), 0x1042)
-    }
-
-    #[test]
-    fn test_add_a_b() {
-        let mut cpu = CPU::new();
-        let mut memory = Memory::new();
-
-        cpu.a = 0x01;
-        cpu.b = 0x02;
-
-        let cycles = cpu.execute_instruction(0x80, &mut memory);
-
-        assert_eq!(cycles, 4);
-        assert_eq!(cpu.a, 0x03);
-        assert_eq!(cpu.flag_z(), false);
-        assert_eq!(cpu.flag_n(), false);
-        assert_eq!(cpu.flag_h(), false);
-        assert_eq!(cpu.flag_c(), false);
-    }
-
-    #[test]
-    fn test_add_a_b_zero() {
-        let mut cpu = CPU::new();
-        let mut memory = Memory::new();
-
-        cpu.a = 0x00;
-        cpu.b = 0x00;
-
-        let cycles = cpu.execute_instruction(0x80, &mut memory);
-
-        assert_eq!(cycles, 4);
-        assert_eq!(cpu.a, 0x00);
-        assert_eq!(cpu.flag_z(), true);
-        assert_eq!(cpu.flag_n(), false);
-        assert_eq!(cpu.flag_h(), false);
-        assert_eq!(cpu.flag_c(), false);
-    }
-
-    #[test]
-    fn test_add_a_b_half_carry() {
-        let mut cpu = CPU::new();
-        let mut memory = Memory::new();
-
-        cpu.a = 0x0F;
-        cpu.b = 0x01;
-
-        let cycles = cpu.execute_instruction(0x80, &mut memory);
-
-        assert_eq!(cycles, 4);
-        assert_eq!(cpu.a, 0x10);
-        assert_eq!(cpu.flag_z(), false);
-        assert_eq!(cpu.flag_n(), false);
-        assert_eq!(cpu.flag_h(), true);
-        assert_eq!(cpu.flag_c(), false);
-    }
-
-    #[test]
-    fn test_add_a_b_carry() {
-        let mut cpu = CPU::new();
-        let mut memory = Memory::new();
-
-        cpu.a = 0xF0;
-        cpu.b = 0x10;
-
-        let cycles = cpu.execute_instruction(0x80, &mut memory);
-
-        assert_eq!(cycles, 4);
-        assert_eq!(cpu.a, 0x00);
-        assert_eq!(cpu.flag_z(), true);
-        assert_eq!(cpu.flag_n(), false);
-        assert_eq!(cpu.flag_h(), false);
-        assert_eq!(cpu.flag_c(), true);
-    }
-
-    #[test]
-    fn test_sub_a_b() {
-        let mut cpu = CPU::new();
-        let mut memory = Memory::new();
-
-        cpu.a = 0x0F;
-        cpu.b = 0x05;
-
-        let cycles = cpu.execute_instruction(0x90, &mut memory);
-
-        assert_eq!(cycles, 4);
-        assert_eq!(cpu.a, 0x0A);
-        assert_eq!(cpu.flag_z(), false);
-        assert_eq!(cpu.flag_n(), true);
-        assert_eq!(cpu.flag_h(), false);
-        assert_eq!(cpu.flag_c(), false);
-    }
-
-    #[test]
-    fn test_sub_a_b_zero() {
-        let mut cpu = CPU::new();
-        let mut memory = Memory::new();
-
-        cpu.a = 0x05;
-        cpu.b = 0x05;
-
-        let cycles = cpu.execute_instruction(0x90, &mut memory);
-
-        assert_eq!(cycles, 4);
-        assert_eq!(cpu.a, 0x00);
-        assert_eq!(cpu.flag_z(), true);
-        assert_eq!(cpu.flag_n(), true);
-        assert_eq!(cpu.flag_h(), false);
-        assert_eq!(cpu.flag_c(), false);
-    }
-
-    #[test]
-    fn test_sub_a_b_half_carry() {
-        let mut cpu = CPU::new();
-        let mut memory = Memory::new();
-
-        cpu.a = 0x10;
-        cpu.b = 0x01;
-
-        let cycles = cpu.execute_instruction(0x90, &mut memory);
-
-        assert_eq!(cycles, 4);
-        assert_eq!(cpu.a, 0x0F);
-        assert_eq!(cpu.flag_z(), false);
-        assert_eq!(cpu.flag_n(), true);
-        assert_eq!(cpu.flag_h(), true);
-        assert_eq!(cpu.flag_c(), false);
-    }
-
-    #[test]
-    fn test_sub_a_b_carry() {
-        let mut cpu = CPU::new();
-        let mut memory = Memory::new();
-
-        cpu.a = 0x05;
-        cpu.b = 0x10;
-
-        let cycles = cpu.execute_instruction(0x90, &mut memory);
-
-        assert_eq!(cycles, 4);
-        assert_eq!(cpu.a, 0xF5);
-        assert_eq!(cpu.flag_z(), false);
-        assert_eq!(cpu.flag_n(), true);
-        assert_eq!(cpu.flag_h(), false);
-        assert_eq!(cpu.flag_c(), true);
-    }
-
-    #[test]
-    fn test_jr_forward() {
-        let mut cpu = CPU::new();
-        let mut memory = Memory::new();
-
-        cpu.pc = 0x0100;
-        memory.write_byte(0x0100, 0x05);
-
-        let cycles = cpu.execute_instruction(0x18, &mut memory);
-
-        assert_eq!(cycles, 12);
-        assert_eq!(cpu.pc, 0x0106);
-    }
-
-    #[test]
-    fn test_jr_backward() {
-        let mut cpu = CPU::new();
-        let mut memory = Memory::new();
-
-        cpu.pc = 0x0100;
-        memory.write_byte(0x0100, 0xFC);
-
-        let cycles = cpu.execute_instruction(0x18, &mut memory);
-
-        assert_eq!(cycles, 12);
-        assert_eq!(cpu.pc, 0x00FD);
-    }
-
-    #[test]
-    fn test_jr_z_taken() {
-        let mut cpu = CPU::new();
-        let mut memory = Memory::new();
-
-        cpu.pc = 0x0100;
-        cpu.set_flag_z(true);
-        memory.write_byte(0x0100, 0x03);
-
-        let cycles = cpu.execute_instruction(0x28, &mut memory);
-
-        assert_eq!(cycles, 12);
-        assert_eq!(cpu.pc, 0x0104);
-    }
-
-    #[test]
-    fn test_jr_z_not_taken() {
-        let mut cpu = CPU::new();
-        let mut memory = Memory::new();
-
-        cpu.pc = 0x0100;
-        cpu.set_flag_z(false);
-        memory.write_byte(0x0100, 0x03);
-
-        let cycles = cpu.execute_instruction(0x28, &mut memory);
-
-        assert_eq!(cycles, 8);
-        assert_eq!(cpu.pc, 0x0101);
-    }
-
-    #[test]
-    fn test_ld_b_a() {
-        let mut cpu = CPU::new();
-        let mut memory = Memory::new();
-
-        cpu.a = 0x42;
-        cpu.b = 0x00;
-
-        let cycles = cpu.execute_instruction(0x47, &mut memory);
-
-        assert_eq!(cycles, 4);
-        assert_eq!(cpu.b, 0x42);
-        assert_eq!(cpu.a, 0x42);
-    }
-
-    #[test]
-    fn test_ld_a_c() {
-        let mut cpu = CPU::new();
-        let mut memory = Memory::new();
-
-        cpu.a = 0x00;
-        cpu.c = 0x99;
-
-        let cycles = cpu.execute_instruction(0x79, &mut memory);
-
-        assert_eq!(cycles, 4);
-        assert_eq!(cpu.a, 0x99);
-        assert_eq!(cpu.c, 0x99);
-    }
-
-    #[test]
-    fn test_ld_same_register() {
-        let mut cpu = CPU::new();
-        let mut memory = Memory::new();
-
-        cpu.d = 0x33;
-
-        let cycles = cpu.execute_instruction(0x52, &mut memory);
-
-        assert_eq!(cycles, 4);
-        assert_eq!(cpu.d, 0x33);
-    }
-
-    #[test]
-    fn test_ld_hl_memory() {
-        let mut cpu = CPU::new();
-        let mut memory = Memory::new();
-
-        cpu.d = 0x33;
-
-        let cycles = cpu.execute_instruction(0x70, &mut memory);
-
-        assert_eq!(cycles, 8);
-        // TODO: test LD (HL) case in the future
-    }
-
-    #[test]
-    fn test_halt_instruction() {
-        let mut cpu = CPU::new();
-        let mut memory = Memory::new();
-
-        let cycles = cpu.execute_instruction(0x76, &mut memory);
-
-        assert_eq!(cycles, 4);
-        // TODO: test HALT state in the future
-    }
-
-    #[test]
-    fn test_add_a_r() {
-        let mut cpu = CPU::new();
-        let mut memory = Memory::new();
-
-        cpu.a = 0x10;
-        cpu.b = 0x05;
-
-        let cycles = cpu.execute_instruction(0x80, &mut memory);
-
-        assert_eq!(cycles, 4);
-        assert_eq!(cpu.a, 0x15);
-        assert_eq!(cpu.flag_z(), false);
-        assert_eq!(cpu.flag_n(), false);
-        assert_eq!(cpu.flag_h(), false);
-        assert_eq!(cpu.flag_c(), false);
-    }
-
-    #[test]
-    fn test_add_a_r_with_carry() {
-        let mut cpu = CPU::new();
-        let mut memory = Memory::new();
-
-        cpu.a = 0xFF;
-        cpu.c = 0x01;
-
-        let cycles = cpu.execute_instruction(0x81, &mut memory);
-
-        assert_eq!(cycles, 4);
-        assert_eq!(cpu.a, 0x00);
-        assert_eq!(cpu.flag_z(), true);
-        assert_eq!(cpu.flag_n(), false);
-        assert_eq!(cpu.flag_h(), true);
-        assert_eq!(cpu.flag_c(), true);
-    }
-
-    #[test]
-    fn test_adc_a_r_without_flag() {
-        let mut cpu = CPU::new();
-        let mut memory = Memory::new();
-
-        cpu.a = 0x10;
-        cpu.b = 0x05;
-
-        let cycles = cpu.execute_instruction(0x88, &mut memory);
-
-        assert_eq!(cycles, 4);
-        assert_eq!(cpu.a, 0x15);
-        assert_eq!(cpu.flag_z(), false);
-        assert_eq!(cpu.flag_n(), false);
-        assert_eq!(cpu.flag_h(), false);
-        assert_eq!(cpu.flag_c(), false);
-    }
-
-    #[test]
-    fn test_adc_a_r_with_flag() {
-        let mut cpu = CPU::new();
-        let mut memory = Memory::new();
-
-        cpu.a = 0x20;
-        cpu.d = 0x06;
-        cpu.set_flag_c(true);
-
-        let cycles = cpu.execute_instruction(0x8A, &mut memory);
-
-        assert_eq!(cycles, 4);
-        assert_eq!(cpu.a, 0x27);
-        assert_eq!(cpu.flag_z(), false);
-        assert_eq!(cpu.flag_n(), false);
-        assert_eq!(cpu.flag_h(), false);
-        assert_eq!(cpu.flag_c(), false);
-    }
-
-    #[test]
-    fn test_sub_a_r() {
-        let mut cpu = CPU::new();
-        let mut memory = Memory::new();
-
-        cpu.a = 0x20;
-        cpu.d = 0x10;
-
-        let cycles = cpu.execute_instruction(0x92, &mut memory);
-
-        assert_eq!(cycles, 4);
-        assert_eq!(cpu.a, 0x10);
-        assert_eq!(cpu.flag_z(), false);
-        assert_eq!(cpu.flag_n(), true);
-        assert_eq!(cpu.flag_h(), false);
-        assert_eq!(cpu.flag_c(), false);
-    }
-
-    #[test]
-    fn test_sub_a_r_underflow() {
-        let mut cpu = CPU::new();
-        let mut memory = Memory::new();
-
-        cpu.a = 0x5;
-        cpu.e = 0x16;
-
-        let cycles = cpu.execute_instruction(0x93, &mut memory);
-
-        assert_eq!(cycles, 4);
-        assert_eq!(cpu.a, 0xEF);
-        assert_eq!(cpu.flag_z(), false);
-        assert_eq!(cpu.flag_n(), true);
-        assert_eq!(cpu.flag_h(), true);
-        assert_eq!(cpu.flag_c(), true);
-    }
-
-    #[test]
-    fn test_sbc_a_r_without_flag() {
-        let mut cpu = CPU::new();
-        let mut memory = Memory::new();
-
-        cpu.a = 0x10;
-        cpu.e = 0x02;
-
-        let cycles = cpu.execute_instruction(0x9B, &mut memory);
-
-        assert_eq!(cycles, 4);
-        assert_eq!(cpu.a, 0x0E);
-        assert_eq!(cpu.flag_z(), false);
-        assert_eq!(cpu.flag_n(), true);
-        assert_eq!(cpu.flag_h(), true);
-        assert_eq!(cpu.flag_c(), false);
-    }
-
-    #[test]
-    fn test_sbc_a_r_with_flag() {
-        let mut cpu = CPU::new();
-        let mut memory = Memory::new();
-
-        cpu.a = 0x20;
-        cpu.l = 0x05;
-        cpu.set_flag_c(true);
-
-        let cycles = cpu.execute_instruction(0x9D, &mut memory);
-
-        assert_eq!(cycles, 4);
-        assert_eq!(cpu.a, 0x1A);
-        assert_eq!(cpu.flag_z(), false);
-        assert_eq!(cpu.flag_n(), true);
-        assert_eq!(cpu.flag_h(), true);
-        assert_eq!(cpu.flag_c(), false);
-    }
-
-    #[test]
-    fn test_and_a_r() {
-        let mut cpu = CPU::new();
-        let mut memory = Memory::new();
-
-        cpu.a = 0xF0;
-        cpu.h = 0x0F;
-
-        let cycles = cpu.execute_instruction(0xA4, &mut memory);
-
-        assert_eq!(cycles, 4);
-        assert_eq!(cpu.a, 0x00);
-        assert_eq!(cpu.flag_z(), true);
-        assert_eq!(cpu.flag_n(), false);
-        assert_eq!(cpu.flag_h(), true);
-        assert_eq!(cpu.flag_c(), false);
-    }
-
-    #[test]
-    fn test_xor_a_r() {
-        let mut cpu = CPU::new();
-        let mut memory = Memory::new();
-
-        cpu.a = 0xAA; // 1010 1010
-        cpu.l = 0x55; // 0101 0101
-
-        let cycles = cpu.execute_instruction(0xAD, &mut memory);
-
-        assert_eq!(cycles, 4);
-        assert_eq!(cpu.a, 0xFF);
-        assert_eq!(cpu.flag_z(), false);
-        assert_eq!(cpu.flag_n(), false);
-        assert_eq!(cpu.flag_h(), false);
-        assert_eq!(cpu.flag_c(), false);
-    }
-
-    #[test]
-    fn test_xor_a_a_zero() {
-        let mut cpu = CPU::new();
-        let mut memory = Memory::new();
-
-        cpu.a = 0xAA; // 1010 1010
-
-        let cycles = cpu.execute_instruction(0xAF, &mut memory);
-
-        assert_eq!(cycles, 4);
-        assert_eq!(cpu.a, 0x00);
-        assert_eq!(cpu.flag_z(), true);
-        assert_eq!(cpu.flag_n(), false);
-        assert_eq!(cpu.flag_h(), false);
-        assert_eq!(cpu.flag_c(), false);
-    }
-
-    #[test]
-    fn test_or_a_r() {
-        let mut cpu = CPU::new();
-        let mut memory = Memory::new();
-
-        cpu.a = 0xF0;
-        cpu.b = 0x0F;
-
-        let cycles = cpu.execute_instruction(0xB0, &mut memory);
-
-        assert_eq!(cycles, 4);
-        assert_eq!(cpu.a, 0xFF);
-        assert_eq!(cpu.flag_z(), false);
-        assert_eq!(cpu.flag_n(), false);
-        assert_eq!(cpu.flag_h(), false);
-        assert_eq!(cpu.flag_c(), false);
-    }
-
-    #[test]
-    fn test_cp_a_r_equal() {
-        let mut cpu = CPU::new();
-        let mut memory = Memory::new();
-
-        cpu.a = 0x42;
-        cpu.c = 0x42;
-        cpu.d = 0x10;
-
-        let cycles = cpu.execute_instruction(0xB9, &mut memory);
-
-        assert_eq!(cycles, 4);
-        assert_eq!(cpu.a, 0x42);
-        assert_eq!(cpu.flag_z(), true);
-        assert_eq!(cpu.flag_n(), true);
-        assert_eq!(cpu.flag_h(), false);
-        assert_eq!(cpu.flag_c(), false);
-    }
-    #[test]
-    fn test_cp_a_r() {
-        let mut cpu = CPU::new();
-        let mut memory = Memory::new();
-
-        cpu.a = 0x42;
-        cpu.d = 0x10;
-
-        let cycles = cpu.execute_instruction(0xBA, &mut memory);
-
-        assert_eq!(cycles, 4);
-        assert_eq!(cpu.a, 0x42);
-        assert_eq!(cpu.flag_z(), false);
-        assert_eq!(cpu.flag_n(), true);
-        assert_eq!(cpu.flag_h(), false);
-        assert_eq!(cpu.flag_c(), false);
-    }
-
-    #[test]
-    fn test_push_pop_bc() {
-        let mut cpu = CPU::new();
-        let mut memory = Memory::new();
-
-        cpu.set_bc(0x1234);
-        cpu.sp = 0xFFFE;
-
-        let cycles = cpu.execute_instruction(0xC5, &mut memory);
-
-        assert_eq!(cycles, 16);
-        assert_eq!(cpu.sp, 0xFFFC);
-        assert_eq!(memory.read_byte(0xFFFC), 0x34);
-        assert_eq!(memory.read_byte(0xFFFD), 0x12);
-
-        // reset bc
-        cpu.set_bc(0x0000);
-
-        let cycles = cpu.execute_instruction(0xC1, &mut memory);
-
-        assert_eq!(cycles, 12);
-        assert_eq!(cpu.bc(), 0x1234);
-        assert_eq!(cpu.sp, 0xFFFE);
-    }
-
-    #[test]
-    fn test_push_pop_de() {
-        let mut cpu = CPU::new();
-        let mut memory = Memory::new();
-
-        cpu.set_de(0xABCD);
-        cpu.sp = 0x8000;
-
-        let cycles = cpu.execute_instruction(0xD5, &mut memory);
-
-        assert_eq!(cycles, 16);
-        assert_eq!(cpu.sp, 0x7FFE);
-        assert_eq!(memory.read_byte(0x7FFE), 0xCD);
-        assert_eq!(memory.read_byte(0x7FFF), 0xAB);
-
-        // reset de
-
-        let cycles = cpu.execute_instruction(0xD1, &mut memory);
-
-        assert_eq!(cycles, 12);
-        assert_eq!(cpu.de(), 0xABCD);
-        assert_eq!(cpu.sp, 0x8000);
-    }
-
-    #[test]
-    fn test_push_pop_hl() {
-        let mut cpu = CPU::new();
-        let mut memory = Memory::new();
-
-        cpu.set_hl(0x5678);
-        cpu.sp = 0x9000;
-
-        let cycles = cpu.execute_instruction(0xE5, &mut memory);
-
-        assert_eq!(cycles, 16);
-        assert_eq!(cpu.sp, 0x8FFE);
-        assert_eq!(memory.read_byte(0x8FFE), 0x78);
-        assert_eq!(memory.read_byte(0x8FFF), 0x56);
-
-        cpu.set_hl(0x0000);
-
-        let cycles = cpu.execute_instruction(0xE1, &mut memory);
-        assert_eq!(cycles, 12);
-        assert_eq!(cpu.hl(), 0x5678);
-        assert_eq!(cpu.sp, 0x9000);
-    }
-
-    #[test]
-    fn test_push_pop_af() {
-        let mut cpu = CPU::new();
-        let mut memory = Memory::new();
-
-        cpu.set_af(0x1000);
-        cpu.sp = 0x2000;
-
-        let cycles = cpu.execute_instruction(0xF5, &mut memory);
-
-        assert_eq!(cycles, 16);
-        assert_eq!(cpu.sp, 0x1FFE);
-        assert_eq!(memory.read_byte(0x1FFE), 0x00);
-        assert_eq!(memory.read_byte(0x1FFF), 0x10);
-
-        cpu.set_af(0x0000);
-
-        let cycles = cpu.execute_instruction(0xF1, &mut memory);
-        assert_eq!(cycles, 12);
-        assert_eq!(cpu.af(), 0x1000);
-        assert_eq!(cpu.sp, 0x2000);
-    }
-
-    #[test]
-    fn test_call_ret_basic() {
-        let mut cpu = CPU::new();
-        let mut memory = Memory::new();
-
-        cpu.pc = 0x0100;
-        cpu.sp = 0xFFFE;
-
-        // Setup CALL 0x0200
-        memory.write_byte(0x0100, 0x00);
-        memory.write_byte(0x0101, 0x02);
-
-        let cycles = cpu.execute_instruction(0xCD, &mut memory);
-
-        assert_eq!(cycles, 24);
-        assert_eq!(cpu.pc, 0x0200);
-        assert_eq!(cpu.sp, 0xFFFC);
-
-        // assert return address is 0x0102
-        assert_eq!(memory.read_byte(0xFFFC), 0x02);
-        assert_eq!(memory.read_byte(0xFFFD), 0x01);
-
-        let cycles = cpu.execute_instruction(0xC9, &mut memory);
-
-        assert_eq!(cycles, 16);
-        assert_eq!(cpu.pc, 0x0102);
-        assert_eq!(cpu.sp, 0xFFFE);
-    }
-
-    #[test]
-    fn test_jp_absolute() {
-        let mut cpu = CPU::new();
-        let mut memory = Memory::new();
-
-        cpu.pc = 0x0150;
-
-        memory.write_byte(0x0150, 0x00);
-        memory.write_byte(0x0151, 0x03);
-
-        let cycles = cpu.execute_instruction(0xC3, &mut memory);
-
-        assert_eq!(cycles, 16);
-        assert_eq!(cpu.pc, 0x0300);
-    }
-
-    #[test]
-    fn test_jp_nz() {
-        let mut cpu = CPU::new();
-        let mut memory = Memory::new();
-
-        cpu.pc = 0x0100;
-        cpu.set_flag_z(true);
-
-        memory.write_byte(0x0100, 0x00);
-        memory.write_byte(0x0101, 0x03);
-
-        let cycles = cpu.execute_instruction(0xC2, &mut memory);
-
-        assert_eq!(cycles, 12);
-        assert_eq!(cpu.pc, 0x0102);
-
-        cpu.pc = 0x0100;
-        cpu.set_flag_z(false);
-
-        let cycles = cpu.execute_instruction(0xC2, &mut memory);
-
-        assert_eq!(cycles, 16);
-        assert_eq!(cpu.pc, 0x0300);
-    }
-
-    #[test]
-    fn test_jp_z() {
-        let mut cpu = CPU::new();
-        let mut memory = Memory::new();
-
-        cpu.pc = 0x0100;
-        cpu.set_flag_z(true);
-
-        memory.write_byte(0x0100, 0x00);
-        memory.write_byte(0x0101, 0x03);
-
-        let cycles = cpu.execute_instruction(0xCA, &mut memory);
-
-        assert_eq!(cycles, 16);
-        assert_eq!(cpu.pc, 0x0300);
-
-        cpu.pc = 0x0100;
-        cpu.set_flag_z(false);
-
-        let cycles = cpu.execute_instruction(0xCA, &mut memory);
-
-        assert_eq!(cycles, 12);
-        assert_eq!(cpu.pc, 0x0102);
-    }
-
-    #[test]
-    fn test_jp_nc() {
-        let mut cpu = CPU::new();
-        let mut memory = Memory::new();
-
-        cpu.pc = 0x0100;
-        cpu.set_flag_c(true);
-
-        memory.write_byte(0x0100, 0x00);
-        memory.write_byte(0x0101, 0x03);
-
-        let cycles = cpu.execute_instruction(0xD2, &mut memory);
-
-        assert_eq!(cycles, 12);
-        assert_eq!(cpu.pc, 0x0102);
-
-        cpu.pc = 0x0100;
-        cpu.set_flag_c(false);
-
-        let cycles = cpu.execute_instruction(0xD2, &mut memory);
-
-        assert_eq!(cycles, 16);
-        assert_eq!(cpu.pc, 0x0300);
-    }
-
-    #[test]
-    fn test_jp_c() {
-        let mut cpu = CPU::new();
-        let mut memory = Memory::new();
-
-        cpu.pc = 0x0100;
-        cpu.set_flag_c(true);
-
-        memory.write_byte(0x0100, 0x00);
-        memory.write_byte(0x0101, 0x03);
-
-        let cycles = cpu.execute_instruction(0xDA, &mut memory);
-
-        assert_eq!(cycles, 16);
-        assert_eq!(cpu.pc, 0x0300);
-
-        cpu.pc = 0x0100;
-        cpu.set_flag_c(false);
-
-        let cycles = cpu.execute_instruction(0xDA, &mut memory);
-
-        assert_eq!(cycles, 12);
-        assert_eq!(cpu.pc, 0x0102);
-    }
-
-    #[test]
-    fn test_ret_nz() {
-        let mut cpu = CPU::new();
-        let mut memory = Memory::new();
-
-        cpu.sp = 0xFFFC;
-        cpu.set_flag_z(true);
-
-        memory.write_byte(0xFFFC, 0x34);
-        memory.write_byte(0xFFFD, 0x12);
-
-        let cycles = cpu.execute_instruction(0xC0, &mut memory);
-
-        assert_eq!(cycles, 8);
-        assert_eq!(cpu.pc, 0x0000);
-        assert_eq!(cpu.sp, 0xFFFC);
-
-        cpu.set_flag_z(false);
-
-        let cycles = cpu.execute_instruction(0xC0, &mut memory);
-
-        assert_eq!(cycles, 20);
-        assert_eq!(cpu.pc, 0x1234);
-        assert_eq!(cpu.sp, 0xFFFE);
-    }
-
-    #[test]
-    fn test_ret_z() {
-        let mut cpu = CPU::new();
-        let mut memory = Memory::new();
-
-        cpu.sp = 0xFFFC;
-        cpu.set_flag_z(false);
-
-        memory.write_byte(0xFFFC, 0x34);
-        memory.write_byte(0xFFFD, 0x12);
-
-        let cycles = cpu.execute_instruction(0xC8, &mut memory);
-
-        assert_eq!(cycles, 8);
-        assert_eq!(cpu.pc, 0x0000);
-        assert_eq!(cpu.sp, 0xFFFC);
-
-        cpu.set_flag_z(true);
-
-        let cycles = cpu.execute_instruction(0xC8, &mut memory);
-
-        assert_eq!(cycles, 20);
-        assert_eq!(cpu.pc, 0x1234);
-        assert_eq!(cpu.sp, 0xFFFE);
-    }
-
-    #[test]
-    fn test_ret_nc() {
-        let mut cpu = CPU::new();
-        let mut memory = Memory::new();
-
-        cpu.sp = 0xFFFC;
-        cpu.set_flag_c(true);
-
-        memory.write_byte(0xFFFC, 0x34);
-        memory.write_byte(0xFFFD, 0x12);
-
-        let cycles = cpu.execute_instruction(0xD0, &mut memory);
-
-        assert_eq!(cycles, 8);
-        assert_eq!(cpu.pc, 0x0000);
-        assert_eq!(cpu.sp, 0xFFFC);
-
-        cpu.set_flag_c(false);
-
-        let cycles = cpu.execute_instruction(0xD0, &mut memory);
-
-        assert_eq!(cycles, 20);
-        assert_eq!(cpu.pc, 0x1234);
-        assert_eq!(cpu.sp, 0xFFFE);
-    }
-
-    #[test]
-    fn test_ret_c() {
-        let mut cpu = CPU::new();
-        let mut memory = Memory::new();
-
-        cpu.sp = 0xFFFC;
-        cpu.set_flag_c(false);
-
-        memory.write_byte(0xFFFC, 0x34);
-        memory.write_byte(0xFFFD, 0x12);
-
-        let cycles = cpu.execute_instruction(0xD8, &mut memory);
-
-        assert_eq!(cycles, 8);
-        assert_eq!(cpu.pc, 0x0000);
-        assert_eq!(cpu.sp, 0xFFFC);
-
-        cpu.set_flag_c(true);
-
-        let cycles = cpu.execute_instruction(0xD8, &mut memory);
-
-        assert_eq!(cycles, 20);
-        assert_eq!(cpu.pc, 0x1234);
-        assert_eq!(cpu.sp, 0xFFFE);
-    }
-
-    #[test]
-    fn test_jr_nz() {
-        let mut cpu = CPU::new();
-        let mut memory = Memory::new();
-
-        cpu.pc = 0x0100;
-        cpu.set_flag_z(true);
-
-        memory.write_byte(0x0100, 0x05); // offset
-
-        let cycles = cpu.execute_instruction(0x20, &mut memory);
-
-        assert_eq!(cycles, 8);
-        assert_eq!(cpu.pc, 0x0101);
-
-        // reset pc
-        cpu.pc = 0x0100;
-        cpu.set_flag_z(false);
-
-        let cycles = cpu.execute_instruction(0x20, &mut memory);
-
-        assert_eq!(cycles, 12);
-        assert_eq!(cpu.pc, 0x0106);
-    }
-
-    #[test]
-    fn test_jr_nc() {
-        let mut cpu = CPU::new();
-        let mut memory = Memory::new();
-
-        cpu.pc = 0x0100;
-        cpu.set_flag_c(true);
-
-        memory.write_byte(0x0100, 0x05); // offset
-
-        let cycles = cpu.execute_instruction(0x30, &mut memory);
-
-        assert_eq!(cycles, 8);
-        assert_eq!(cpu.pc, 0x0101);
-
-        // reset pc
-        cpu.pc = 0x0100;
-        cpu.set_flag_c(false);
-
-        let cycles = cpu.execute_instruction(0x30, &mut memory);
-
-        assert_eq!(cycles, 12);
-        assert_eq!(cpu.pc, 0x0106);
-    }
-
-    #[test]
-    fn test_jr_c() {
-        let mut cpu = CPU::new();
-        let mut memory = Memory::new();
-
-        cpu.pc = 0x0100;
-        cpu.set_flag_c(false);
-
-        memory.write_byte(0x0100, 0x05); // offset
-
-        let cycles = cpu.execute_instruction(0x38, &mut memory);
-
-        assert_eq!(cycles, 8);
-        assert_eq!(cpu.pc, 0x0101);
-
-        // reset pc
-        cpu.pc = 0x0100;
-        cpu.set_flag_c(true);
-
-        let cycles = cpu.execute_instruction(0x38, &mut memory);
-
-        assert_eq!(cycles, 12);
-        assert_eq!(cpu.pc, 0x0106);
-    }
-
-    #[test]
-    fn test_di() {
-        let mut cpu = CPU::new();
-        let mut memory = Memory::new();
-
-        let cycles = cpu.execute_instruction(0xF3, &mut memory);
-
-        assert_eq!(cycles, 4);
-        assert_eq!(cpu.ime, false)
-    }
-
-    #[test]
-    fn test_ei() {
-        let mut cpu = CPU::new();
-        let mut memory = Memory::new();
-
-        let cycles = cpu.execute_instruction(0xFB, &mut memory);
-
-        assert_eq!(cycles, 4);
-        assert_eq!(cpu.ime, true)
-    }
-
-    #[test]
-    fn test_sp_nn_immediate() {
-        let mut cpu = CPU::new();
-        let mut memory = Memory::new();
-
-        cpu.pc = 0x0100;
-
-        memory.write_byte(0x0100, 0x34);
-        memory.write_byte(0x0101, 0x12);
-
-        let cycles = cpu.execute_instruction(0x31, &mut memory);
-
-        assert_eq!(cycles, 12);
-        assert_eq!(cpu.pc, 0x0102);
-        assert_eq!(cpu.sp, 0x1234);
-    }
-
-    #[test]
-    fn test_sub_a_immediate() {
-        let mut cpu = CPU::new();
-        let mut memory = Memory::new();
-
-        cpu.a = 0x10;
-        cpu.pc = 0x0100;
-
-        memory.write_byte(0x0100, 0x05);
-
-        let cycles = cpu.execute_instruction(0xD6, &mut memory);
-
-        assert_eq!(cycles, 8);
-        assert_eq!(cpu.a, 0x0B);
-        assert_eq!(cpu.flag_z(), false);
-        assert_eq!(cpu.flag_n(), true);
-        assert_eq!(cpu.flag_h(), true);
-        assert_eq!(cpu.flag_c(), false);
-    }
-
-    #[test]
-    fn test_cp_a_immediate() {
-        let mut cpu = CPU::new();
-        let mut memory = Memory::new();
-
-        cpu.a = 0x10;
-        cpu.pc = 0x0100;
-
-        memory.write_byte(0x0100, 0x05);
-
-        let cycles = cpu.execute_instruction(0xFE, &mut memory);
-
-        assert_eq!(cycles, 8);
-        assert_eq!(cpu.a, 0x10);
-        assert_eq!(cpu.pc, 0x101);
-        assert_eq!(cpu.flag_z(), false);
-        assert_eq!(cpu.flag_n(), true);
-        assert_eq!(cpu.flag_h(), true);
-        assert_eq!(cpu.flag_c(), false);
-    }
-
-    #[test]
-    fn test_ldh_a() {
-        let mut cpu = CPU::new();
-        let mut memory = Memory::new();
-
-        cpu.a = 0x10;
-        cpu.pc = 0x0100;
-
-        memory.write_byte(0x0100, 0x05);
-
-        let cycles = cpu.execute_instruction(0xE0, &mut memory);
-
-        assert_eq!(cycles, 12);
-        assert_eq!(memory.read_byte(0xFF05), cpu.a);
-        assert_eq!(cpu.pc, 0x101);
-    }
-
-    #[test]
-    fn test_ld_a_absolute() {
-        let mut cpu = CPU::new();
-        let mut memory = Memory::new();
-
-        cpu.pc = 0x0100;
-        cpu.a = 0x15;
-
-        memory.write_byte(0x0100, 0x34);
-        memory.write_byte(0x0101, 0x12);
-
-        let cycles = cpu.execute_instruction(0xEA, &mut memory);
-
-        assert_eq!(cycles, 16);
-        assert_eq!(cpu.pc, 0x0102);
-        assert_eq!(memory.read_byte(0x1234), cpu.a);
-    }
-
-    #[test]
-    fn test_rlca() {
-        let mut cpu = CPU::new();
-        let mut memory = Memory::new();
-
-        cpu.a = 0x0F;
-
-        let cycles = cpu.execute_instruction(0x07, &mut memory);
-
-        assert_eq!(cycles, 4);
-        assert_eq!(cpu.a, 0x1E);
-        assert_eq!(cpu.flag_z(), false);
-        assert_eq!(cpu.flag_n(), false);
-        assert_eq!(cpu.flag_h(), false);
-        assert_eq!(cpu.flag_c(), false);
-    }
-
-    #[test]
-    fn test_rlca_carry() {
-        let mut cpu = CPU::new();
-        let mut memory = Memory::new();
-
-        cpu.a = 0xF5;
-
-        let cycles = cpu.execute_instruction(0x07, &mut memory);
-
-        assert_eq!(cycles, 4);
-        assert_eq!(cpu.a, 0xEB);
-        assert_eq!(cpu.flag_z(), false);
-        assert_eq!(cpu.flag_n(), false);
-        assert_eq!(cpu.flag_h(), false);
-        assert_eq!(cpu.flag_c(), true);
-    }
-
-    #[test]
-    fn test_rrca() {
-        let mut cpu = CPU::new();
-        let mut memory = Memory::new();
-
-        cpu.a = 0xD6;
-
-        let cycles = cpu.execute_instruction(0x0F, &mut memory);
-
-        assert_eq!(cycles, 4);
-        assert_eq!(cpu.a, 0x6B);
-        assert_eq!(cpu.flag_z(), false);
-        assert_eq!(cpu.flag_n(), false);
-        assert_eq!(cpu.flag_h(), false);
-        assert_eq!(cpu.flag_c(), false);
-    }
-
-    #[test]
-    fn test_rrca_carry() {
-        let mut cpu = CPU::new();
-        let mut memory = Memory::new();
-
-        cpu.a = 0xF5;
-
-        let cycles = cpu.execute_instruction(0x0F, &mut memory);
-
-        assert_eq!(cycles, 4);
-        assert_eq!(cpu.a, 0xFA);
-        assert_eq!(cpu.flag_z(), false);
-        assert_eq!(cpu.flag_n(), false);
-        assert_eq!(cpu.flag_h(), false);
-        assert_eq!(cpu.flag_c(), true);
-    }
-
-    #[test]
-    fn test_inc_bc() {
-        let mut cpu = CPU::new();
-        let mut memory = Memory::new();
-
-        cpu.set_bc(0x1234);
-
-        let cycles = cpu.execute_instruction(0x03, &mut memory);
-
-        assert_eq!(cycles, 8);
-        assert_eq!(cpu.bc(), 0x1235);
-    }
-
-    #[test]
-    fn test_dec_bc() {
-        let mut cpu = CPU::new();
-        let mut memory = Memory::new();
-
-        cpu.set_bc(0x1234);
-
-        let cycles = cpu.execute_instruction(0x0B, &mut memory);
-
-        assert_eq!(cycles, 8);
-        assert_eq!(cpu.bc(), 0x1233);
-    }
-
-    #[test]
-    fn test_hl_nn_immediate() {
-        let mut cpu = CPU::new();
-        let mut memory = Memory::new();
-
-        cpu.pc = 0x0100;
-
-        memory.write_byte(0x0100, 0x34);
-        memory.write_byte(0x0101, 0x12);
-
-        let cycles = cpu.execute_instruction(0x21, &mut memory);
-
-        assert_eq!(cycles, 12);
-        assert_eq!(cpu.pc, 0x0102);
-        assert_eq!(cpu.hl(), 0x1234);
-    }
-
-    #[test]
-    fn test_inc_hl() {
-        let mut cpu = CPU::new();
-        let mut memory = Memory::new();
-
-        cpu.set_hl(0x1234);
-
-        let cycles = cpu.execute_instruction(0x23, &mut memory);
-
-        assert_eq!(cycles, 8);
-        assert_eq!(cpu.hl(), 0x1235);
-    }
-
-    #[test]
-    fn test_lda_hl_inc() {
-        let mut cpu = CPU::new();
-        let mut memory = Memory::new();
-
-        cpu.set_hl(0x0105);
-        memory.write_byte(0x0105, 0x42);
-
-        let cycles = cpu.execute_instruction(0x2A, &mut memory);
-
-        assert_eq!(cycles, 8);
-        assert_eq!(cpu.hl(), 0x0106);
-        assert_eq!(cpu.a, 0x42);
-    }
-
-    #[test]
-    fn test_ldha() {
-        let mut cpu = CPU::new();
-        let mut memory = Memory::new();
-
-        cpu.pc = 0x0100;
-        memory.write_byte(0x0100, 0x05);
-        memory.write_byte(0xFF05, 0x16);
-
-        let cycles = cpu.execute_instruction(0xF0, &mut memory);
-
-        assert_eq!(cycles, 12);
-        assert_eq!(cpu.pc, 0x0101);
-        assert_eq!(cpu.a, 0x16);
-    }
-
-    #[test]
-    fn test_not_implemented() {
-        let mut cpu = CPU::new();
-        let mut memory = Memory::new();
-
-        let cycles = cpu.execute_instruction(0xFF, &mut memory);
-
-        assert_eq!(cycles, 4);
     }
 }

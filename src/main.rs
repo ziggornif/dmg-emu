@@ -1,79 +1,51 @@
 use std::fs;
 
-use dmg_emu::{cpu::CPU, memory::Memory, ppu::PPU};
+use dmg_emu::gameboy::Gameboy;
 
 fn main() {
     println!("DMG EMU Booting ...");
-    let mut cpu = CPU::new();
-    let mut memory = Memory::new();
+    let mut gameboy = Gameboy::new();
 
     match fs::read("resources/cpu_instrs.gb") {
-        Ok(rom_data) => {
-            println!("ROM loaded: {} bytes", rom_data.len());
-            load_rom(&mut memory, &rom_data);
-        }
+        Ok(rom_data) => match gameboy.load_rom(&rom_data) {
+            Ok(_) => println!("ROM loaded successfully!"),
+            Err(e) => {
+                panic!("Error: {}", e);
+            }
+        },
         Err(_) => {
             panic!("ROM not found");
         }
     }
 
-    cpu.pc = 0x0100; // cartridge boot address
+    // loop {
+    //     gameboy.run_frame();
+    //     // gameboy.print_debug_screen();
 
-    println!("Start ROM execution ...");
-    for i in 0..50000 {
-        let vblank = step(&mut cpu, &mut memory);
+    //     std::thread::sleep(std::time::Duration::from_millis(16));
+    // }
+    loop {
+        println!(
+            "PPU Status: LCD={}, Mode={:?}, LY={}",
+            gameboy.bus.ppu.is_lcd_enabled(),
+            gameboy.bus.ppu.get_mode(),
+            gameboy.bus.ppu.ly
+        );
+        // Logs pour les 100 premières instructions
+        // if i < 100 {
+        //     println!("=== Instruction {} ===", i);
+        //     println!("PC: 0x{:04X}, SP: 0x{:04X}", gameboy.cpu.pc, gameboy.cpu.sp);
 
-        if vblank {
-            println!("V-Blank interrupt at step {}", i)
-        }
+        //     let opcode = gameboy.bus.read_byte(gameboy.cpu.pc);
+        //     println!("Opcode: 0x{:02X}", opcode);
+        // }
 
-        if i % 1000 == 0 {
-            println!(
-                "Step {}: PC=0x{:04X}, LY={}, PPU_MODE={:?}",
-                i,
-                cpu.pc,
-                memory.ppu.ly,
-                get_ppu_mode(&memory.ppu)
-            );
-        }
-    }
+        gameboy.step();
+        gameboy.print_debug_screen();
+        std::thread::sleep(std::time::Duration::from_millis(16));
 
-    println!("End of execution");
-    println!(
-        "=== Final state ===\nVariables:\nA: 0x{:02X}, B: 0x{:02X}, C: 0x{:02X}, D: 0x{:02X}, E: 0x{:02X}, H: 0x{:02X}, L: 0x{:02X}\nFlags:\nZ: {}, Flag N: {}, Flag H: {}, Flag C: {}",
-        cpu.a,
-        cpu.b,
-        cpu.c,
-        cpu.d,
-        cpu.e,
-        cpu.h,
-        cpu.l,
-        cpu.flag_z(),
-        cpu.flag_n(),
-        cpu.flag_h(),
-        cpu.flag_c()
-    );
-}
-
-fn step(cpu: &mut CPU, memory: &mut Memory, ppu: &mut PPU) -> bool {
-    let opcode = memory.read_byte(cpu.pc);
-    cpu.pc += 1;
-    let cycles = cpu.execute_instruction(opcode, memory);
-    ppu.step(cycles, memory)
-}
-
-fn load_rom(memory: &mut Memory, rom_data: &[u8]) {
-    for (i, &byte) in rom_data.iter().take(0x8000).enumerate() {
-        memory.write_byte(i as u16, byte);
-    }
-}
-
-fn get_ppu_mode(ppu: &dmg_emu::ppu::PPU) -> &str {
-    match ppu.stat & 0x03 {
-        0 => "HBlank",
-        1 => "VBlank",
-        2 => "OAMScan",
-        3 => "Drawing",
-        _ => "Unknown",
+        // if vblank {
+        //     break;
+        // }
     }
 }

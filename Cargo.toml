@@ -8,3 +8,4 @@ Gameboy emulator
 """
 
 [dependencies]
+log = "0.4.27"
