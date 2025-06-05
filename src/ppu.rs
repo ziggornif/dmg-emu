@@ -1,6 +1,4 @@
-use log::debug;
-
-use crate::{bus::Bus, memory::Memory};
+use crate::memory::Memory;
 
 pub struct PPU {
     // PPU registers
@@ -99,14 +97,6 @@ impl PPU {
         match address {
             0xFF40 => {
                 let lcd_enabled_before = self.is_lcd_enabled();
-                debug!(
-                    "LCDC write: 0x{:02X} -> 0x{:02X} (LCD: {} -> {})",
-                    self.lcdc,
-                    value,
-                    lcd_enabled_before,
-                    (value & 0x80) != 0
-                );
-
                 self.lcdc = value;
                 let lcd_enabled_after = self.is_lcd_enabled();
 
@@ -114,10 +104,6 @@ impl PPU {
                     self.ly = 0;
                     self.cycles = 0;
                     self.mode = PPUMode::HBLank;
-                    debug!(
-                        "PPU RESET! LY={} -> 0, Mode={:?} -> HBLank",
-                        self.ly, self.mode
-                    );
                 }
             }
             0xFF41 => self.stat = (self.stat & 0x87) | (value & 0x78), // (current & 1000 0111) | (new_val & 0111 1000)
@@ -129,21 +115,18 @@ impl PPU {
             0xFF4B => self.wx = value,
             0xFF47 => {
                 self.bgp = value;
-                debug!("Background palette configured: 0x{:02X}", value);
                 self.decode_palette(value, "Background");
             }
             0xFF48 => {
                 self.obp0 = value;
-                debug!("Object palette 0 configured: 0x{:02X}", value);
                 self.decode_palette(value, "Object 0");
             }
             0xFF49 => {
                 self.obp1 = value;
-                debug!("Object palette 1 configured: 0x{:02X}", value);
                 self.decode_palette(value, "Object 1");
             }
             _ => {
-                debug!(
+                println!(
                     "Register not implemented: 0x{:04X} = 0x{:02X}",
                     address, value
                 );
@@ -152,19 +135,6 @@ impl PPU {
     }
 
     pub fn step(&mut self, cpu_cycles: u8, memory: &Memory) -> bool {
-        debug!(
-            "PPU: Mode={:?}, LY={}, Cycles={}/{}",
-            self.mode,
-            self.ly,
-            self.cycles,
-            match self.mode {
-                PPUMode::OAMScan => 80,
-                PPUMode::Drawing => 172,
-                PPUMode::HBLank => 204,
-                PPUMode::VBlank => 456,
-            }
-        );
-
         if (self.lcdc & 0x80) == 0 {
             return false;
         }
@@ -221,14 +191,14 @@ impl PPU {
                 }
             }
             PPUMode::VBlank => {
-                debug!("VBlank processing: LY={}, cycles={}", self.ly, self.cycles);
+                println!("VBlank processing: LY={}, cycles={}", self.ly, self.cycles);
                 if self.cycles >= 456 {
-                    debug!("VBlank line complete! LY {} → {}", self.ly, self.ly + 1);
+                    println!("VBlank line complete! LY {} → {}", self.ly, self.ly + 1);
                     self.cycles -= 456;
                     self.ly += 1;
 
                     if self.ly >= 154 {
-                        debug!("VBlank finished! Resetting to LY=0, OAMScan");
+                        println!("VBlank finished! Resetting to LY=0, OAMScan");
                         self.ly = 0;
                         self.mode = PPUMode::OAMScan;
                     }
@@ -282,19 +252,9 @@ impl PPU {
 
     // Exemple de vraie fonction render_line() qui lit la VRAM
     fn render_line(&mut self, memory: &Memory) {
-        println!("render_line called! LY={}", self.ly);
         let line = self.ly as usize;
         if line >= 144 {
             return;
-        }
-
-        if line == 0 {
-            println!(
-                "REAL RENDER: BG enabled={}, LCDC=0x{:02X}, BGP=0x{:02X}",
-                (self.lcdc & 0x01) != 0,
-                self.lcdc,
-                self.bgp
-            );
         }
 
         // Vérifier si le background est activé
@@ -359,26 +319,8 @@ impl PPU {
             // Appliquer la palette background
             let final_color = self.apply_bg_palette(color_id);
 
-            if line == 74 && x < 5 {
-                println!(
-                    "Pixel {}: tile_map_addr=0x{:04X}, tile_id=0x{:02X}",
-                    x, tile_map_addr, tile_id
-                );
-                println!(
-                    "  tile_addr=0x{:04X}, line_addr=0x{:04X}",
-                    tile_addr, line_addr
-                );
-                println!(
-                    "  byte1=0x{:02X}, byte2=0x{:02X}, color_id={}",
-                    byte1, byte2, color_id
-                );
-                println!("  final_color={}", final_color);
-            }
-
             self.framebuffer[line][x] = final_color;
         }
-
-        println!("Line sample pixels: {:?}", &self.framebuffer[line][0..160]);
     }
 
     fn apply_bg_palette(&self, color_id: u8) -> u8 {
@@ -396,7 +338,7 @@ impl PPU {
 
         let color_names = ["White", "Light Gray", "Dark Gray", "Black"];
 
-        debug!(
+        println!(
             "  {} palette: {} -> {} -> {} -> {}",
             name,
             color_names[color0 as usize],

@@ -1,5 +1,4 @@
 use crate::bus::Bus;
-use log::debug;
 
 const FLAG_Z: u8 = 0b10000000; // Zero
 const FLAG_N: u8 = 0b01000000; // Subtraction
@@ -34,15 +33,15 @@ impl Default for CPU {
 impl CPU {
     pub fn new() -> Self {
         Self {
-            a: 0,
-            b: 0,
-            c: 0,
-            d: 0,
-            e: 0,
-            f: 0,
-            h: 0,
-            l: 0,
-            sp: 0,
+            a: 0x01,
+            b: 0x00,
+            c: 0x13,
+            d: 0x00,
+            e: 0xD8,
+            f: 0xB0,
+            h: 0x01,
+            l: 0x4D,
+            sp: 0xFFFE,
             pc: 0x0100,
             ime: false,
         }
@@ -176,29 +175,19 @@ impl CPU {
     }
 
     fn stack_push(&mut self, bus: &mut Bus, value: u16) {
-        debug!(
-            "PUSH: SP before = 0x{:04X}, value = 0x{:04X}",
-            self.sp, value
-        );
         self.sp = self.sp.wrapping_sub(1);
         bus.write_byte(self.sp, (value >> 8) as u8);
         self.sp = self.sp.wrapping_sub(1);
         bus.write_byte(self.sp, value as u8);
-        debug!("PUSH: SP after = 0x{:04X}", self.sp);
     }
 
     fn stack_pop(&mut self, bus: &mut Bus) -> u16 {
-        debug!("POP: SP before = 0x{:04X}", self.sp);
         let low = bus.read_byte(self.sp) as u16;
         self.sp = self.sp.wrapping_add(1);
         let high = bus.read_byte(self.sp) as u16;
         self.sp = self.sp.wrapping_add(1);
 
         let result = (high << 8) | low;
-        debug!(
-            "POP: SP after = 0x{:04X}, value = 0x{:04X}",
-            self.sp, result
-        );
         result
     }
 
@@ -383,10 +372,8 @@ impl CPU {
                 // JR r8 - Jump relative
                 let offset = bus.read_byte(self.pc) as i8; // to get offset sign
                 self.pc += 1;
-                let old_pc = self.pc;
 
                 self.pc = ((self.pc as i32) + (offset as i32)) as u16;
-                debug!("JR: 0x{:04X} + {} = 0x{:04X}", old_pc, offset, self.pc);
 
                 12
             }
@@ -409,7 +396,6 @@ impl CPU {
 
                 // 0x76 = HALT
                 if opcode == 0x76 {
-                    debug!("HALT instruction");
                     return 4;
                 }
 
@@ -515,8 +501,6 @@ impl CPU {
                 self.pc += 1;
                 let address = (high << 8) | low;
 
-                debug!("CALL: Calling 0x{:04X} from 0x{:04X}", address, self.pc);
-
                 // store current address
                 self.stack_push(bus, self.pc);
 
@@ -528,6 +512,7 @@ impl CPU {
             0xC9 => {
                 // RET - Return from function
                 self.pc = self.stack_pop(bus);
+
                 16
             }
             0xC3 => {
@@ -711,8 +696,6 @@ impl CPU {
                 let value = bus.read_byte(self.pc);
                 self.pc += 1;
 
-                debug!("CP: A=0x{:02X} compare with 0x{:02X}", self.a, value);
-
                 self.alu_cp(value);
 
                 8
@@ -816,11 +799,6 @@ impl CPU {
                 let address = 0xFF00 + (offset as u16);
                 self.a = bus.read_byte(address);
 
-                debug!(
-                    "LDH: Read 0x{:02X} from 0xFF{:02X} (=0x{:04X})",
-                    self.a, offset, address
-                );
-
                 12
             }
             0xFA => {
@@ -858,12 +836,10 @@ impl CPU {
                 let address = (high << 8) | low;
 
                 if !self.flag_z() {
-                    debug!("CALL NZ: Calling 0x{:04X} from 0x{:04X}", address, self.pc);
                     self.stack_push(bus, self.pc);
                     self.pc = address;
                     24
                 } else {
-                    debug!("CALL NZ: Skipped (Z=1)");
                     12
                 }
             }
@@ -871,8 +847,6 @@ impl CPU {
                 // STOP - Stop CPU until interrupt occurs
                 let _next_byte = bus.read_byte(self.pc);
                 self.pc += 1;
-
-                debug!("STOP instruction executed - continuing ...");
 
                 4
             }
@@ -1336,7 +1310,7 @@ impl CPU {
                     }
 
                     _ => {
-                        debug!("CB opcode not implemented: 0x{:02X}", cb_opcode);
+                        println!("CB opcode not implemented: 0x{:02X}", cb_opcode);
                         8
                     }
                 }
@@ -1403,6 +1377,7 @@ impl CPU {
             0xF9 => {
                 // LD SP, HL - Load HL into SP
                 self.sp = self.hl();
+
                 8
             }
             0x2F => {
@@ -1416,7 +1391,8 @@ impl CPU {
                 4
             }
             _ => {
-                debug!("Opcode not implemented: 0x{:02X}", opcode);
+                println!("Opcode not implemented: 0x{:02X}", opcode);
+
                 4
             }
         }

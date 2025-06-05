@@ -1,5 +1,3 @@
-use log::debug;
-
 use crate::{bus::Bus, cpu::CPU};
 
 pub struct Gameboy {
@@ -19,16 +17,26 @@ impl Gameboy {
         self.bus.load_rom(rom_data)
     }
 
+    fn validate_pc(&self) {
+        match self.cpu.pc {
+            0x0000..=0x7FFF => {} // ROM - OK
+            0xC000..=0xFEFF => {} // RAM - OK
+            _ => {
+                println!("ERROR: PC in invalid zone: 0x{:04X}", self.cpu.pc);
+                self.print_cpu_state();
+                panic!("PC in invalid memory zone");
+            }
+        }
+    }
+
     pub fn step(&mut self) -> bool {
+        self.validate_pc();
+
         let opcode = self.bus.read_byte(self.cpu.pc);
-
-        self.cpu.pc += 1;
-
+        self.cpu.pc = self.cpu.pc.wrapping_add(1);
         let cycles = self.cpu.execute_instruction(opcode, &mut self.bus);
 
-        debug!("About to call PPU step with {} cycles", cycles);
         let vblank_interrupt = self.bus.ppu_step(cycles);
-        debug!("PPU step done, LY is now: {}", self.bus.ppu.ly);
 
         if vblank_interrupt && self.cpu.interrupts_enabled() {
             self.handle_vblank_interrupt();

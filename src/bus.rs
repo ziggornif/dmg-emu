@@ -13,7 +13,7 @@ impl Bus {
         }
     }
 
-    pub fn read_byte(&mut self, address: u16) -> u8 {
+    pub fn read_byte(&self, address: u16) -> u8 {
         match address {
             0xFF40..=0xFF4B => self.ppu.read_register(address),
             0x8000..=0x9FFF => {
@@ -35,10 +35,6 @@ impl Bus {
     }
 
     pub fn write_byte(&mut self, address: u16, value: u8) {
-        if address >= 0x8000 && address <= 0x9FFF {
-            println!("VRAM WRITE: 0x{:04X} = 0x{:02X}", address, value);
-        }
-
         match address {
             0xFF40..=0xFF4B => self.ppu.write_register(address, value),
             0x8000..=0x9FFF => {
