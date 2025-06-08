@@ -5,6 +5,7 @@ const FLAG_N: u8 = 0b01000000; // Subtraction
 const FLAG_H: u8 = 0b00100000; // Half Carry
 const FLAG_C: u8 = 0b00010000; // Carry
 
+#[derive(Debug, Clone)]
 pub struct CPU {
     // 8bit registers
     pub a: u8,

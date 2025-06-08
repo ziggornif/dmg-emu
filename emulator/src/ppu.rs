@@ -1,5 +1,6 @@
 use crate::memory::Memory;
 
+#[derive(Debug, Clone)]
 pub struct PPU {
     // PPU registers
     pub lcdc: u8, // LCD Control

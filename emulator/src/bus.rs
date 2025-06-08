@@ -1,5 +1,6 @@
 use crate::{memory::Memory, ppu::PPU};
 
+#[derive(Debug, Clone)]
 pub struct Bus {
     pub memory: Memory,
     pub ppu: PPU,

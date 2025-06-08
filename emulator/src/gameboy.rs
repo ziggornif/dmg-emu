@@ -1,5 +1,6 @@
 use crate::{bus::Bus, cpu::CPU};
 
+#[derive(Debug, Clone)]
 pub struct Gameboy {
     pub cpu: CPU,
     pub bus: Bus,
