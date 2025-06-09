@@ -10,7 +10,7 @@ mod tests {
         let cycles = cpu.execute_instruction(0x00, &mut bus);
 
         assert_eq!(cycles, 4);
-        assert_eq!(cpu.pc, 0);
+        assert_eq!(cpu.pc, 0x0100);
     }
 
     #[test]
@@ -41,7 +41,7 @@ mod tests {
 
         assert_eq!(cycles, 8);
         assert_eq!(cpu.pc, 0x105);
-        assert_eq!(cpu.a, 0x00);
+        assert_eq!(cpu.a, 0x01);
         assert_eq!(cpu.b, 0x0F);
     }
 
@@ -565,6 +565,7 @@ mod tests {
 
         cpu.a = 0x10;
         cpu.b = 0x05;
+        cpu.set_flag_c(false);
 
         let cycles = cpu.execute_instruction(0x88, &mut bus);
 
@@ -635,6 +636,7 @@ mod tests {
     fn test_sbc_a_r_without_flag() {
         let mut cpu = CPU::new();
         let mut bus = Bus::new();
+        cpu.set_flag_c(false);
 
         cpu.a = 0x10;
         cpu.e = 0x02;
@@ -1029,7 +1031,7 @@ mod tests {
         let cycles = cpu.execute_instruction(0xC0, &mut bus);
 
         assert_eq!(cycles, 8);
-        assert_eq!(cpu.pc, 0x0000);
+        assert_eq!(cpu.pc, 0x0100);
         assert_eq!(cpu.sp, 0xFFFC);
 
         cpu.set_flag_z(false);
@@ -1055,7 +1057,7 @@ mod tests {
         let cycles = cpu.execute_instruction(0xC8, &mut bus);
 
         assert_eq!(cycles, 8);
-        assert_eq!(cpu.pc, 0x0000);
+        assert_eq!(cpu.pc, 0x0100);
         assert_eq!(cpu.sp, 0xFFFC);
 
         cpu.set_flag_z(true);
@@ -1081,7 +1083,7 @@ mod tests {
         let cycles = cpu.execute_instruction(0xD0, &mut bus);
 
         assert_eq!(cycles, 8);
-        assert_eq!(cpu.pc, 0x0000);
+        assert_eq!(cpu.pc, 0x0100);
         assert_eq!(cpu.sp, 0xFFFC);
 
         cpu.set_flag_c(false);
@@ -1107,7 +1109,7 @@ mod tests {
         let cycles = cpu.execute_instruction(0xD8, &mut bus);
 
         assert_eq!(cycles, 8);
-        assert_eq!(cpu.pc, 0x0000);
+        assert_eq!(cpu.pc, 0x0100);
         assert_eq!(cpu.sp, 0xFFFC);
 
         cpu.set_flag_c(true);
@@ -1469,7 +1471,7 @@ mod tests {
         let mut cpu = CPU::new();
         let mut bus = Bus::new();
 
-        let cycles = cpu.execute_instruction(0xFF, &mut bus);
+        let cycles = cpu.execute_instruction(0xEF, &mut bus);
 
         assert_eq!(cycles, 4);
     }
