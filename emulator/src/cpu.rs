@@ -994,9 +994,7 @@ impl CPU {
                 // LD (nn), SP - Store stack pointer at absolute address
                 let address = bus.read_word(self.pc);
                 self.pc = self.pc.wrapping_add(2);
-
-                bus.write_byte(address, self.sp as u8);
-                bus.write_byte(address + 1, (self.sp >> 8) as u8);
+                bus.write_word(address, self.sp);
 
                 20
             }

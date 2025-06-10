@@ -1471,7 +1471,7 @@ mod tests {
         let mut cpu = CPU::new();
         let mut bus = Bus::new();
 
-        let cycles = cpu.execute_instruction(0xEF, &mut bus);
+        let cycles = cpu.execute_instruction(0xFD, &mut bus);
 
         assert_eq!(cycles, 4);
     }
