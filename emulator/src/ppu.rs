@@ -146,34 +146,34 @@ impl PPU {
         match self.mode {
             PPUMode::OAMScan => {
                 if self.cycles >= 80 {
-                    println!(
-                        "OAMScan complete! {} -> Drawing (LY={})",
-                        self.cycles, self.ly
-                    );
+                    // println!(
+                    //     "OAMScan complete! {} -> Drawing (LY={})",
+                    //     self.cycles, self.ly
+                    // );
                     self.cycles -= 80;
                     self.mode = PPUMode::Drawing;
                 } else {
-                    println!("OAMScan: {} / 80 cycles", self.cycles);
+                    // println!("OAMScan: {} / 80 cycles", self.cycles);
                 }
             }
             PPUMode::Drawing => {
                 if self.cycles >= 172 {
-                    println!(
-                        "Drawing complete! {} -> HBlank (LY={})",
-                        self.cycles, self.ly
-                    );
+                    // println!(
+                    //     "Drawing complete! {} -> HBlank (LY={})",
+                    //     self.cycles, self.ly
+                    // );
                     self.cycles -= 172;
 
                     self.render_line(memory);
 
                     self.mode = PPUMode::HBLank;
                 } else {
-                    println!("Drawing: {} / 172 cycles", self.cycles);
+                    // println!("Drawing: {} / 172 cycles", self.cycles);
                 }
             }
             PPUMode::HBLank => {
                 if self.cycles >= 204 {
-                    println!("HBlank complete! LY {} -> {}", self.ly, self.ly + 1);
+                    // println!("HBlank complete! LY {} -> {}", self.ly, self.ly + 1);
                     self.cycles -= 204;
                     self.ly += 1;
 
@@ -184,22 +184,22 @@ impl PPU {
                         self.mode = PPUMode::OAMScan;
                     }
                 } else {
-                    println!(
-                        "HBlank: {} / 204 cycles (need {} more)",
-                        self.cycles,
-                        204 - self.cycles
-                    );
+                    // println!(
+                    //     "HBlank: {} / 204 cycles (need {} more)",
+                    //     self.cycles,
+                    //     204 - self.cycles
+                    // );
                 }
             }
             PPUMode::VBlank => {
-                println!("VBlank processing: LY={}, cycles={}", self.ly, self.cycles);
+                // println!("VBlank processing: LY={}, cycles={}", self.ly, self.cycles);
                 if self.cycles >= 456 {
-                    println!("VBlank line complete! LY {} → {}", self.ly, self.ly + 1);
+                    // println!("VBlank line complete! LY {} → {}", self.ly, self.ly + 1);
                     self.cycles -= 456;
                     self.ly += 1;
 
                     if self.ly >= 154 {
-                        println!("VBlank finished! Resetting to LY=0, OAMScan");
+                        // println!("VBlank finished! Resetting to LY=0, OAMScan");
                         self.ly = 0;
                         self.mode = PPUMode::OAMScan;
                     }
@@ -350,7 +350,7 @@ impl PPU {
     }
 
     pub fn print_screen(&self) {
-        println!("┌{}┐", "─".repeat(160));
+        println!("\n┌{}┐", "─".repeat(160));
 
         for line in self.framebuffer.iter() {
             print!("│");

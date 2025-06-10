@@ -2,7 +2,7 @@ use crate::bus::Bus;
 
 const FLAG_Z: u8 = 0b10000000; // Zero
 const FLAG_N: u8 = 0b01000000; // Subtraction
-const FLAG_H: u8 = 0b00100000; // Half Carry
+const FLAG_H: u8 = 0b00100000; // Half-Carry
 const FLAG_C: u8 = 0b00010000; // Carry
 
 #[derive(Debug, Clone)]
@@ -175,7 +175,7 @@ impl CPU {
         self.set_flag_c((old_a as u16) < (value as u16));
     }
 
-    fn stack_push(&mut self, bus: &mut Bus, value: u16) {
+    pub fn stack_push(&mut self, bus: &mut Bus, value: u16) {
         self.sp = self.sp.wrapping_sub(1);
         bus.write_byte(self.sp, (value >> 8) as u8);
         self.sp = self.sp.wrapping_sub(1);
@@ -292,12 +292,8 @@ impl CPU {
             }
             0x01 => {
                 // LD BC, nn - Load 16bits immediate into BC
-                let low = bus.read_byte(self.pc);
-                self.pc += 1;
-                let high = bus.read_byte(self.pc);
-                self.pc += 1;
-
-                let value = ((high as u16) << 8) | (low as u16);
+                let value = bus.read_word(self.pc);
+                self.pc = self.pc.wrapping_add(2);
                 self.set_bc(value);
 
                 12
@@ -496,11 +492,8 @@ impl CPU {
             }
             0xCD => {
                 // CALL nn - Call function
-                let low = bus.read_byte(self.pc) as u16;
-                self.pc += 1;
-                let high = bus.read_byte(self.pc) as u16;
-                self.pc += 1;
-                let address = (high << 8) | low;
+                let address = bus.read_word(self.pc);
+                self.pc = self.pc.wrapping_add(2);
 
                 // store current address
                 self.stack_push(bus, self.pc);
@@ -518,23 +511,15 @@ impl CPU {
             }
             0xC3 => {
                 // JP nn - Jump absolute
-                let low = bus.read_byte(self.pc) as u16;
-                self.pc += 1;
-                let high = bus.read_byte(self.pc) as u16;
-                self.pc += 1;
-                let address = (high << 8) | low;
-
+                let address = bus.read_word(self.pc);
                 self.pc = address;
 
                 16
             }
             0xC2 => {
                 // JP NZ, nn
-                let low = bus.read_byte(self.pc) as u16;
-                self.pc += 1;
-                let high = bus.read_byte(self.pc) as u16;
-                self.pc += 1;
-                let address = (high << 8) | low;
+                let address = bus.read_word(self.pc);
+                self.pc = self.pc.wrapping_add(2);
 
                 if !self.flag_z() {
                     self.pc = address;
@@ -545,11 +530,8 @@ impl CPU {
             }
             0xCA => {
                 // JP Z, nn
-                let low = bus.read_byte(self.pc) as u16;
-                self.pc += 1;
-                let high = bus.read_byte(self.pc) as u16;
-                self.pc += 1;
-                let address = (high << 8) | low;
+                let address = bus.read_word(self.pc);
+                self.pc = self.pc.wrapping_add(2);
 
                 if self.flag_z() {
                     self.pc = address;
@@ -560,11 +542,8 @@ impl CPU {
             }
             0xD2 => {
                 // JP NC, nn
-                let low = bus.read_byte(self.pc) as u16;
-                self.pc += 1;
-                let high = bus.read_byte(self.pc) as u16;
-                self.pc += 1;
-                let address = (high << 8) | low;
+                let address = bus.read_word(self.pc);
+                self.pc = self.pc.wrapping_add(2);
 
                 if !self.flag_c() {
                     self.pc = address;
@@ -575,11 +554,8 @@ impl CPU {
             }
             0xDA => {
                 // JP C, nn
-                let low = bus.read_byte(self.pc) as u16;
-                self.pc += 1;
-                let high = bus.read_byte(self.pc) as u16;
-                self.pc += 1;
-                let address = (high << 8) | low;
+                let address = bus.read_word(self.pc);
+                self.pc = self.pc.wrapping_add(2);
 
                 if self.flag_c() {
                     self.pc = address;
@@ -674,17 +650,14 @@ impl CPU {
             }
             0x31 => {
                 // LD SP, nn - Load 16bits immediate into SP
-                let low = bus.read_byte(self.pc) as u16;
-                self.pc += 1;
-                let high = bus.read_byte(self.pc) as u16;
-                self.pc += 1;
-
-                self.sp = (high << 8) | low;
+                let value = bus.read_word(self.pc);
+                self.pc = self.pc.wrapping_add(2);
+                self.sp = value;
 
                 12
             }
             0xD6 => {
-                // SUB A, n - Substract immediate from A
+                // SUB A, n - Subtract immediate from A
                 let value = bus.read_byte(self.pc);
                 self.pc += 1;
 
@@ -713,12 +686,8 @@ impl CPU {
             }
             0xEA => {
                 // LD (nn), A - Load A into absolute address
-                let low = bus.read_byte(self.pc) as u16;
-                self.pc += 1;
-                let high = bus.read_byte(self.pc) as u16;
-                self.pc += 1;
-
-                let address = (high << 8) | low;
+                let address = bus.read_word(self.pc);
+                self.pc = self.pc.wrapping_add(2);
                 bus.write_byte(address, self.a);
 
                 16
@@ -765,12 +734,9 @@ impl CPU {
             }
             0x21 => {
                 // LD HL, nn - Load immediate into HL
-                let low = bus.read_byte(self.pc) as u16;
-                self.pc += 1;
-                let high = bus.read_byte(self.pc) as u16;
-                self.pc += 1;
+                let value = bus.read_word(self.pc);
+                self.pc = self.pc.wrapping_add(2);
 
-                let value = (high << 8) | low;
                 self.set_hl(value);
 
                 12
@@ -804,12 +770,8 @@ impl CPU {
             }
             0xFA => {
                 // LD (HL), A - Load A from absolute address
-                let low = bus.read_byte(self.pc) as u16;
-                self.pc += 1;
-                let high = bus.read_byte(self.pc) as u16;
-                self.pc += 1;
-
-                let address = (high << 8) | low;
+                let address = bus.read_word(self.pc);
+                self.pc = self.pc.wrapping_add(2);
                 self.a = bus.read_byte(address);
 
                 16
@@ -828,15 +790,50 @@ impl CPU {
                 4
             }
             0xC4 => {
-                // CALL NZ, nn - Call function if not zero
-                let low = bus.read_byte(self.pc) as u16;
-                self.pc += 1;
-                let high = bus.read_byte(self.pc) as u16;
-                self.pc += 1;
-
-                let address = (high << 8) | low;
+                // CALL NZ, nn
+                let address = bus.read_word(self.pc);
+                self.pc = self.pc.wrapping_add(2);
 
                 if !self.flag_z() {
+                    self.stack_push(bus, self.pc);
+                    self.pc = address;
+                    24
+                } else {
+                    12
+                }
+            }
+            0xCC => {
+                // CALL Z, nn
+                let address = bus.read_word(self.pc);
+                self.pc = self.pc.wrapping_add(2);
+
+                if self.flag_z() {
+                    self.stack_push(bus, self.pc);
+                    self.pc = address;
+                    24
+                } else {
+                    12
+                }
+            }
+            0xD4 => {
+                // CALL NC, nn
+                let address = bus.read_word(self.pc);
+                self.pc = self.pc.wrapping_add(2);
+
+                if !self.flag_c() {
+                    self.stack_push(bus, self.pc);
+                    self.pc = address;
+                    24
+                } else {
+                    12
+                }
+            }
+            0xDC => {
+                // CALL C, nn
+                let address = bus.read_word(self.pc);
+                self.pc = self.pc.wrapping_add(2);
+
+                if self.flag_c() {
                     self.stack_push(bus, self.pc);
                     self.pc = address;
                     24
@@ -987,24 +984,16 @@ impl CPU {
             }
             0x11 => {
                 // LD DE, nn - Load 16bit immediate into DE
-                let low = bus.read_byte(self.pc) as u16;
-                self.pc += 1;
-                let high = bus.read_byte(self.pc) as u16;
-                self.pc += 1;
-
-                let value = (high << 8) | low;
+                let value = bus.read_word(self.pc);
+                self.pc = self.pc.wrapping_add(2);
                 self.set_de(value);
 
                 12
             }
             0x08 => {
                 // LD (nn), SP - Store stack pointer at absolute address
-                let low = bus.read_byte(self.pc) as u16;
-                self.pc += 1;
-                let high = bus.read_byte(self.pc) as u16;
-                self.pc += 1;
-
-                let address = (high << 8) | low;
+                let address = bus.read_word(self.pc);
+                self.pc = self.pc.wrapping_add(2);
 
                 bus.write_byte(address, self.sp as u8);
                 bus.write_byte(address + 1, (self.sp >> 8) as u8);
@@ -1152,7 +1141,7 @@ impl CPU {
             }
             0x39 => {
                 // ADD HL, SP
-                let hl_value = self.sp;
+                let hl_value = self.hl();
                 let sp_value = self.sp;
                 let result = hl_value.wrapping_add(sp_value);
                 self.set_hl(result);
@@ -1197,7 +1186,7 @@ impl CPU {
                 8
             }
             0xDE => {
-                // SBC A, n - Substract with carry
+                // SBC A, n - Subtract with carry
                 let value = bus.read_byte(self.pc);
                 self.pc += 1;
                 self.alu_sbc(value);
@@ -1240,6 +1229,32 @@ impl CPU {
                 self.pc += 1;
 
                 match cb_opcode {
+                    0x11 => {
+                        // RL C - Rotate C left through carry
+                        let old_carry = if self.flag_c() { 1 } else { 0 };
+                        let new_carry = (self.c & 0x80) != 0;
+                        self.c = (self.c << 1) | old_carry;
+
+                        self.set_flag_z(self.c == 0);
+                        self.set_flag_n(false);
+                        self.set_flag_h(false);
+                        self.set_flag_c(new_carry);
+
+                        8
+                    }
+                    0x13 => {
+                        // RL C - Rotate C left through carry
+                        let old_carry = if self.flag_c() { 1 } else { 0 };
+                        let new_carry = (self.c & 0x80) != 0;
+                        self.e = (self.e << 1) | old_carry;
+
+                        self.set_flag_z(self.e == 0);
+                        self.set_flag_n(false);
+                        self.set_flag_h(false);
+                        self.set_flag_c(new_carry);
+
+                        8
+                    }
                     // RR r - Rotate Right through Carry
                     0x18 => {
                         // RR B
@@ -1277,6 +1292,18 @@ impl CPU {
                         8
                     }
 
+                    0x1B => {
+                        // RR E
+                        let old_carry = if self.flag_c() { 0x80 } else { 0 };
+                        let new_carry = (self.e & 0x01) != 0;
+                        self.e = (self.e >> 1) | old_carry;
+                        self.set_flag_z(self.e == 0);
+                        self.set_flag_n(false);
+                        self.set_flag_h(false);
+                        self.set_flag_c(new_carry);
+                        8
+                    }
+
                     // SRL r - Shift Right Logical
                     0x38 => {
                         // SRL B
@@ -1291,7 +1318,7 @@ impl CPU {
 
                     0x3F => {
                         // SRL A
-                        let new_carry = (self.b & 0x01) != 0;
+                        let new_carry = (self.a & 0x01) != 0;
                         self.a >>= 1;
                         self.set_flag_z(self.a == 0);
                         self.set_flag_n(false);
@@ -1308,6 +1335,61 @@ impl CPU {
                         self.set_flag_h(false);
                         self.set_flag_c(false);
                         8
+                    }
+
+                    0x40..=0x7F => {
+                        // BIT n, r - Test bit n in register r
+                        let bit_number = (cb_opcode >> 3) & 0x07;
+                        let register = cb_opcode & 0x07;
+
+                        let value = if register == 6 {
+                            bus.read_byte(self.hl())
+                        } else {
+                            self.get_register(register)
+                        };
+
+                        let bit_set = (value & (1 << bit_number)) != 0;
+
+                        // Update flags
+                        self.set_flag_z(!bit_set);
+                        self.set_flag_n(false);
+                        self.set_flag_h(true);
+
+                        if register == 6 { 12 } else { 8 }
+                    }
+
+                    0x80..=0xBF => {
+                        // RES n, r - Reset bit n in register r
+                        let bit_number = (cb_opcode >> 3) & 0x07;
+                        let register = cb_opcode & 0x07;
+
+                        if register == 6 {
+                            let address = self.hl();
+                            let value = bus.read_byte(address);
+                            bus.write_byte(address, value & !(1 << bit_number));
+                            16
+                        } else {
+                            let value = self.get_register(register);
+                            self.set_register(register, value);
+                            8
+                        }
+                    }
+
+                    0xC0..=0xFF => {
+                        // SET n, r - Set bit n in register r
+                        let bit_number = (cb_opcode >> 3) & 0x07;
+                        let register = cb_opcode & 0x07;
+
+                        if register == 6 {
+                            let address = self.hl();
+                            let value = bus.read_byte(address);
+                            bus.write_byte(address, value | (1 << bit_number));
+                            16
+                        } else {
+                            let value = self.get_register(register) | (1 << bit_number);
+                            self.set_register(register, value);
+                            8
+                        }
                     }
 
                     _ => {
@@ -1332,7 +1414,7 @@ impl CPU {
                 12
             }
             0xE9 => {
-                // JP (HL) - Jump to address contained in HL
+                // JP (HL) - Jump to the address contained in HL
                 self.pc = self.hl();
                 4
             }
@@ -1390,6 +1472,105 @@ impl CPU {
                 self.set_flag_h(true);
 
                 4
+            }
+            0x36 => {
+                // LD (HL), n
+                let value = bus.read_byte(self.pc);
+                self.pc += 1;
+                let addr = self.hl();
+                bus.write_byte(addr, value);
+
+                12
+            }
+            0xE8 => {
+                // ADD SP, r8
+                let offset = bus.read_byte(self.pc) as i8 as i16;
+                self.pc = self.pc.wrapping_add(1);
+
+                let sp_low = self.sp as u8;
+                let offset_u8 = offset as u8;
+
+                self.set_flag_z(false);
+                self.set_flag_n(false);
+                self.set_flag_h((sp_low & 0x0F) + (offset_u8 & 0x0F) > 0x0F);
+                self.set_flag_c((sp_low as u16) + (offset_u8 as u16) > 0xFF);
+
+                self.sp = (self.sp as i16).wrapping_add(offset) as u16;
+
+                16
+            }
+            0xF8 => {
+                // LD HL, SP+r8
+                let offset = bus.read_byte(self.pc) as i8 as i16;
+                self.pc = self.pc.wrapping_add(1);
+                let result = (self.sp as i16).wrapping_add(offset) as u16;
+
+                let sp_low = self.sp as u8;
+                let offset_u8 = offset as u8;
+
+                self.set_flag_z(false);
+                self.set_flag_n(false);
+                self.set_flag_h((sp_low & 0x0F) + (offset_u8 & 0x0F) > 0x0F);
+                self.set_flag_c((sp_low as u16) + (offset_u8 as u16) > 0xFF);
+
+                self.set_hl(result);
+
+                12
+            }
+            0xE2 => {
+                // LD (0xFF00+C), A - Store A at address 0xFF00 + C
+                let address = 0xFF00 + self.c as u16;
+                bus.write_byte(address, self.a);
+
+                8
+            }
+            0xEF => {
+                // RST 28H - Call address 0x0028
+                self.stack_push(bus, self.pc);
+                self.pc = 0x0028;
+
+                16
+            }
+            0xDF => {
+                // RST 18H - Call address 0x0018
+                self.stack_push(bus, self.pc);
+                self.pc = 0x0018;
+                16
+            }
+            0x17 => {
+                // RLA - Rotate A left through carry
+                let carry = if self.flag_c() { 1 } else { 0 };
+                let new_carry = (self.a & 0x80) != 0;
+                self.a = (self.a << 1) | carry;
+
+                // Update flags
+                self.set_flag_z(false); // Z is always reset
+                self.set_flag_n(false);
+                self.set_flag_h(false);
+                self.set_flag_c(new_carry);
+
+                8
+            }
+            0x34 => {
+                // INC (HL) - Increment value at HL address
+                let address = self.hl();
+                let value = bus.read_byte(address);
+                let result = value.wrapping_add(1);
+                bus.write_byte(address, result);
+
+                // Update flags
+                self.set_flag_z(result == 0);
+                self.set_flag_n(false);
+                self.set_flag_h((value & 0x0F) == 0x0F);
+
+                12
+            }
+            0xD9 => {
+                // RETI - Return from interrupt
+                self.pc = self.stack_pop(bus);
+                self.ime = true;
+
+                16
             }
             _ => {
                 println!("Opcode not implemented: 0x{:02X}", opcode);
