@@ -1,5 +1,6 @@
 use crate::{bus::Bus, cpu::CPU};
 
+#[derive(Debug, Clone)]
 pub struct Gameboy {
     pub cpu: CPU,
     pub bus: Bus,
@@ -20,7 +21,13 @@ impl Gameboy {
     fn validate_pc(&self) {
         match self.cpu.pc {
             0x0000..=0x7FFF => {} // ROM - OK
-            0xC000..=0xFEFF => {} // RAM - OK
+            0x8000..=0x9FFF => {} // VRAM - OK
+            0xA000..=0xBFFF => {} // External RAM - OK
+            0xC000..=0xFDFF => {} // WRAM - OK
+            0xFE00..=0xFE9F => {} // OAM - OK
+            0xFF00..=0xFF7F => {} // I/O Registers - OK
+            0xFF80..=0xFFFE => {} // HRAM - OK
+            0xFFFF => {}          // IE Register - OK
             _ => {
                 println!("ERROR: PC in invalid zone: 0x{:04X}", self.cpu.pc);
                 self.print_cpu_state();
@@ -30,6 +37,16 @@ impl Gameboy {
     }
 
     pub fn step(&mut self) -> bool {
+        // Log périodique
+        if self.cpu.pc == 0x0100 {
+            println!("Retour au début - possible boucle infinie");
+        }
+
+        // Log des sorties série
+        if let Some(data) = self.get_serial_output() {
+            print!("{}", data as char);
+        }
+
         self.validate_pc();
 
         let opcode = self.bus.read_byte(self.cpu.pc);
@@ -46,13 +63,8 @@ impl Gameboy {
     }
 
     fn handle_vblank_interrupt(&mut self) {
-        self.cpu.sp = self.cpu.sp.wrapping_sub(1);
-        self.bus.write_byte(self.cpu.sp, (self.cpu.pc >> 8) as u8);
-        self.cpu.sp = self.cpu.sp.wrapping_sub(1);
-        self.bus.write_byte(self.cpu.sp, self.cpu.pc as u8);
-
+        self.cpu.stack_push(&mut self.bus, self.cpu.pc);
         self.cpu.pc = 0x0040;
-
         self.cpu.disable_interrupts();
     }
 
@@ -79,8 +91,22 @@ impl Gameboy {
         &self.bus.ppu.framebuffer
     }
 
+    pub fn get_serial_output(&mut self) -> Option<u8> {
+        // Vérifier si le registre serial a des données (0xFF02 bit 7 pour le transfer)
+        // et récupérer les données du registre 0xFF01
+        if self.bus.read_byte(0xFF02) & 0x80 != 0 {
+            let data = self.bus.read_byte(0xFF01);
+            // Réinitialiser le bit de transfer
+            self.bus
+                .write_byte(0xFF02, self.bus.read_byte(0xFF02) & 0x7F);
+            Some(data)
+        } else {
+            None
+        }
+    }
+
     pub fn print_debug_screen(&self) {
-        self.bus.ppu.print_screen_small();
+        self.bus.ppu.print_screen();
     }
 
     pub fn print_cpu_state(&self) {
