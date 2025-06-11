@@ -8,7 +8,7 @@ pub struct Memory {
 impl Memory {
     pub fn new() -> Self {
         Self {
-            data: [0xFF; 0x10000],
+            data: [0x00; 0x10000],
             vram: [0; 0x2000],
             oam: [0; 0xA0],
         }
@@ -68,7 +68,7 @@ impl Memory {
         }
 
         let copy_size = std::cmp::min(rom_data.len(), 0x8000);
-        self.data[0x0000..0x8000].fill(0xFF);
+        // self.data[0x0000..0x8000].fill(0xFF);
         self.data[0x0000..copy_size].copy_from_slice(&rom_data[0..copy_size]);
 
         Ok(())

@@ -38,6 +38,24 @@ impl Bus {
 
     pub fn write_byte(&mut self, address: u16, value: u8) {
         match address {
+            0xFF01 => {
+                println!(
+                    "Serial data write: 0x{:02X} ('{}')",
+                    value,
+                    if value.is_ascii_graphic() || value == b' ' {
+                        value as char
+                    } else {
+                        '?'
+                    }
+                );
+                self.memory.write_byte(address, value);
+            }
+            0xFF02 => {
+                if value & 0x80 != 0 {
+                    println!("Serial transfer started");
+                }
+                self.memory.write_byte(address, value);
+            }
             0xFF46 => {
                 // DMA Transfer
                 self.perform_dma_transfer(value);

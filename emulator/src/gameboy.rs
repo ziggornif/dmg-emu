@@ -37,6 +37,16 @@ impl Gameboy {
     }
 
     pub fn step(&mut self) -> bool {
+        // Log périodique
+        if self.cpu.pc == 0x0100 {
+            println!("Retour au début - possible boucle infinie");
+        }
+
+        // Log des sorties série
+        if let Some(data) = self.get_serial_output() {
+            print!("{}", data as char);
+        }
+
         self.validate_pc();
 
         let opcode = self.bus.read_byte(self.cpu.pc);
