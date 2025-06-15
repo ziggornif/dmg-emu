@@ -1,4 +1,4 @@
-use crate::bus::Bus;
+use crate::{bus::Bus, error};
 
 const FLAG_Z: u8 = 0b10000000; // Zero
 const FLAG_N: u8 = 0b01000000; // Subtraction
@@ -1391,7 +1391,7 @@ impl CPU {
                     }
 
                     _ => {
-                        println!("CB opcode not implemented: 0x{:02X}", cb_opcode);
+                        error!("CB opcode not implemented: 0x{:02X}", cb_opcode);
                         8
                     }
                 }
@@ -1571,7 +1571,7 @@ impl CPU {
                 16
             }
             _ => {
-                println!("Opcode not implemented: 0x{:02X}", opcode);
+                error!("Opcode not implemented: 0x{:02X}", opcode);
 
                 4
             }

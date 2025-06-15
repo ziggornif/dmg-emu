@@ -1,4 +1,4 @@
-use crate::{bus::Bus, cpu::CPU};
+use crate::{bus::Bus, cpu::CPU, error, info, print_cpu_state, print_ppu_state};
 
 #[derive(Debug, Clone)]
 pub struct Gameboy {
@@ -29,22 +29,21 @@ impl Gameboy {
             0xFF80..=0xFFFE => {} // HRAM - OK
             0xFFFF => {}          // IE Register - OK
             _ => {
-                println!("ERROR: PC in invalid zone: 0x{:04X}", self.cpu.pc);
-                self.print_cpu_state();
+                error!("ERROR: PC in invalid zone: 0x{:04X}", self.cpu.pc);
+                print_cpu_state!(self.cpu);
+                print_ppu_state!(self.bus.ppu);
                 panic!("PC in invalid memory zone");
             }
         }
     }
 
     pub fn step(&mut self) -> bool {
-        // Log périodique
         if self.cpu.pc == 0x0100 {
-            println!("Retour au début - possible boucle infinie");
+            info!("Back to program start - possible infinite loop");
         }
 
-        // Log des sorties série
         if let Some(data) = self.get_serial_output() {
-            print!("{}", data as char);
+            info!("{}", data as char);
         }
 
         self.validate_pc();
@@ -92,11 +91,8 @@ impl Gameboy {
     }
 
     pub fn get_serial_output(&mut self) -> Option<u8> {
-        // Vérifier si le registre serial a des données (0xFF02 bit 7 pour le transfer)
-        // et récupérer les données du registre 0xFF01
         if self.bus.read_byte(0xFF02) & 0x80 != 0 {
             let data = self.bus.read_byte(0xFF01);
-            // Réinitialiser le bit de transfer
             self.bus
                 .write_byte(0xFF02, self.bus.read_byte(0xFF02) & 0x7F);
             Some(data)
@@ -107,66 +103,6 @@ impl Gameboy {
 
     pub fn print_debug_screen(&self) {
         self.bus.ppu.print_screen();
-    }
-
-    pub fn print_cpu_state(&self) {
-        println!("CPU State:");
-        println!(
-            "  A: 0x{:02X}  F: 0x{:02X}  AF: 0x{:04X}",
-            self.cpu.a,
-            self.cpu.f,
-            self.cpu.af()
-        );
-        println!(
-            "  B: 0x{:02X}  C: 0x{:02X}  BC: 0x{:04X}",
-            self.cpu.b,
-            self.cpu.c,
-            self.cpu.bc()
-        );
-        println!(
-            "  D: 0x{:02X}  E: 0x{:02X}  DE: 0x{:04X}",
-            self.cpu.d,
-            self.cpu.e,
-            self.cpu.de()
-        );
-        println!(
-            "  H: 0x{:02X}  L: 0x{:02X}  HL: 0x{:04X}",
-            self.cpu.h,
-            self.cpu.l,
-            self.cpu.hl()
-        );
-        println!("  SP: 0x{:04X}  PC: 0x{:04X}", self.cpu.sp, self.cpu.pc);
-        println!(
-            "  Flags: Z:{} N:{} H:{} C:{}",
-            if self.cpu.flag_z() { "1" } else { "0" },
-            if self.cpu.flag_n() { "1" } else { "0" },
-            if self.cpu.flag_h() { "1" } else { "0" },
-            if self.cpu.flag_c() { "1" } else { "0" }
-        );
-        println!(
-            "  IME: {}",
-            if self.cpu.interrupts_enabled() {
-                "enabled"
-            } else {
-                "disabled"
-            }
-        );
-    }
-
-    pub fn print_ppu_state(&self) {
-        println!("PPU State:");
-        println!(
-            "  LCDC: 0x{:02X}  STAT: 0x{:02X}",
-            self.bus.ppu.lcdc, self.bus.ppu.stat
-        );
-        println!("  LY: {}  LYC: {}", self.bus.ppu.ly, self.bus.ppu.lyc);
-        println!("  SCX: {}  SCY: {}", self.bus.ppu.scx, self.bus.ppu.scy);
-        println!(
-            "  Mode: {:?}  Cycles: {}",
-            self.bus.ppu.get_mode(),
-            self.bus.ppu.get_cycles()
-        );
-        println!("  LCD Enabled: {}", self.bus.ppu.is_lcd_enabled());
     }
 }
 

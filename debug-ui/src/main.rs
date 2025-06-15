@@ -35,7 +35,7 @@ where
 #[tokio::main]
 async fn main() -> std::io::Result<()> {
     let mut gameboy = Gameboy::new();
-    match fs::read("debug-ui/resources/cpu_instrs.gb") {
+    match fs::read("resources/cpu_instrs.gb") {
         Ok(rom_data) => match gameboy.load_rom(&rom_data) {
             Ok(_) => println!("ROM loaded successfully!"),
             Err(e) => panic!("Error: {}", e),
@@ -53,10 +53,7 @@ async fn main() -> std::io::Result<()> {
         Ok(_) => println!("Opcodes writed in opcodes.txt"),
         Err(e) => println!("Could not write opcodes file {}", e),
     }
-    // println!("0x{:02X}", gameboy.bus.read_byte(gameboy.cpu.pc + 1));
-    // println!("0x{:02X}", gameboy.bus.read_byte(gameboy.cpu.pc + 2));
-    // println!("0x{:02X}", gameboy.bus.read_byte(gameboy.cpu.pc + 3));
-    // println!("0x{:04X}", gameboy.bus.read_byte(0x0637));
+
     let app = Router::new().route("/", get(index)).with_state(gameboy);
 
     let listener = TcpListener::bind("127.0.0.1:3000").await?;

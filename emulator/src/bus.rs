@@ -1,4 +1,4 @@
-use crate::{memory::Memory, ppu::PPU};
+use crate::{debug, memory::Memory, ppu::PPU};
 
 #[derive(Debug, Clone)]
 pub struct Bus {
@@ -39,7 +39,7 @@ impl Bus {
     pub fn write_byte(&mut self, address: u16, value: u8) {
         match address {
             0xFF01 => {
-                println!(
+                debug!(
                     "Serial data write: 0x{:02X} ('{}')",
                     value,
                     if value.is_ascii_graphic() || value == b' ' {
@@ -52,7 +52,7 @@ impl Bus {
             }
             0xFF02 => {
                 if value & 0x80 != 0 {
-                    println!("Serial transfer started");
+                    debug!("Serial transfer started");
                 }
                 self.memory.write_byte(address, value);
             }
