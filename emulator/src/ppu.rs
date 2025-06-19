@@ -220,35 +220,29 @@ impl PPU {
         (self.lcdc & 0x80) != 0
     }
 
-    // Exemple de vraie fonction render_line() qui lit la VRAM
     fn render_line(&mut self, memory: &Memory) {
         let line = self.ly as usize;
         if line >= 144 {
             return;
         }
 
-        // Vérifier si le background est activé
         if (self.lcdc & 0x01) == 0 {
-            // Background désactivé - remplir de blanc
             for x in 0..160 {
                 self.framebuffer[line][x] = 0;
             }
             return;
         }
 
-        // Calculer la ligne du background avec scrolling
         let bg_y = ((line as u8).wrapping_add(self.scy)) as usize;
-        let tile_y = bg_y / 8; // Quelle ligne de tiles
-        let pixel_y = bg_y % 8; // Quelle ligne dans le tile
+        let tile_y = bg_y / 8;
+        let pixel_y = bg_y % 8;
 
-        // Déterminer quelle map utiliser (LCDC bit 3)
         let bg_map_base = if (self.lcdc & 0x08) != 0 {
             0x9C00
         } else {
             0x9800
         };
 
-        // Déterminer quelle zone de tiles utiliser (LCDC bit 4)
         let tile_data_base = if (self.lcdc & 0x10) != 0 {
             0x8000
         } else {
@@ -257,36 +251,28 @@ impl PPU {
         let signed_tiles = (self.lcdc & 0x10) == 0;
 
         for x in 0..160 {
-            // Calculer la position du background avec scrolling
             let bg_x = ((x as u8).wrapping_add(self.scx)) as usize;
-            let tile_x = bg_x / 8; // Quelle colonne de tiles
-            let pixel_x = bg_x % 8; // Quelle colonne dans le tile
+            let tile_x = bg_x / 8;
+            let pixel_x = bg_x % 8;
 
-            // Lire l'ID du tile depuis la background map
             let tile_map_addr = bg_map_base + (tile_y * 32) + tile_x;
             let tile_id = memory.read_vram(tile_map_addr as u16);
 
-            // Calculer l'adresse du tile dans la VRAM
             let tile_addr = if signed_tiles {
-                // Mode signé: 0x9000 + (tile_id as i8 as i16) * 16
                 (0x9000_u16).wrapping_add(((tile_id as i8 as i16) * 16) as u16)
             } else {
-                // Mode non-signé: 0x8000 + tile_id * 16
                 tile_data_base + (tile_id as u16 * 16)
             };
 
-            // Lire les 2 bytes de la ligne du tile
             let line_addr = tile_addr + (pixel_y as u16 * 2);
             let byte1 = memory.read_vram(line_addr);
             let byte2 = memory.read_vram(line_addr + 1);
 
-            // Extraire la couleur du pixel (2 bits)
             let bit_pos = 7 - pixel_x;
             let color_bit_0 = (byte1 >> bit_pos) & 1;
             let color_bit_1 = (byte2 >> bit_pos) & 1;
             let color_id = (color_bit_1 << 1) | color_bit_0;
 
-            // Appliquer la palette background
             let final_color = self.apply_bg_palette(color_id);
 
             self.framebuffer[line][x] = final_color;
