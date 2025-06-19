@@ -1,14 +1,17 @@
 #[cfg(test)]
 mod tests {
-    use dmg_emu::ppu::{PPU, PPUMode};
+    use emulator::{
+        memory::Memory,
+        ppu::{PPU, PPUMode},
+    };
 
-    fn advance_ppu_lines(ppu: &mut PPU, lines: u32) {
+    fn advance_ppu_lines(ppu: &mut PPU, memory: &Memory, lines: u32) {
         let total_cycles = lines * 456;
         let mut remaining = total_cycles;
 
         while remaining > 0 {
             let step_size = std::cmp::min(remaining, 100) as u8;
-            ppu.step(step_size);
+            ppu.step(step_size, memory);
             remaining -= step_size as u32;
         }
     }
@@ -86,8 +89,9 @@ mod tests {
     #[test]
     fn test_lcd_disable() {
         let mut ppu = PPU::new();
+        let memory = Memory::new();
 
-        advance_ppu_lines(&mut ppu, 1);
+        advance_ppu_lines(&mut ppu, &memory, 1);
         assert_eq!(ppu.ly, 1);
         assert_eq!(ppu.read_register(0xFF41) & 0x03, 2);
 
@@ -98,7 +102,7 @@ mod tests {
         assert!(!ppu.is_lcd_enabled());
 
         let old_ly = ppu.ly;
-        let vblank = ppu.step(255);
+        let vblank = ppu.step(255, &memory);
 
         assert_eq!(ppu.ly, old_ly);
         assert!(!vblank);
@@ -107,15 +111,16 @@ mod tests {
     #[test]
     fn test_oam_scan_to_drawing() {
         let mut ppu = PPU::new();
+        let memory = Memory::new();
 
         assert_eq!(ppu.read_register(0xFF41) & 0x03, 2); // OAMScan
 
-        let vblank = ppu.step(79);
+        let vblank = ppu.step(79, &memory);
 
         assert_eq!(ppu.read_register(0xFF41) & 0x03, 2); // OAMScan
         assert!(!vblank);
 
-        let vblank = ppu.step(1);
+        let vblank = ppu.step(1, &memory);
 
         assert_eq!(ppu.read_register(0xFF41) & 0x03, 3); // Drawing
         assert!(!vblank);
@@ -124,16 +129,17 @@ mod tests {
     #[test]
     fn test_drawing_to_hblank() {
         let mut ppu = PPU::new();
+        let memory = Memory::new();
 
-        ppu.step(80);
+        ppu.step(80, &memory);
         assert_eq!(ppu.read_register(0xFF41) & 0x03, 3); // Drawing
 
-        let vblank = ppu.step(171);
+        let vblank = ppu.step(171, &memory);
 
         assert_eq!(ppu.read_register(0xFF41) & 0x03, 3); // Drawing
         assert!(!vblank);
 
-        let vblank = ppu.step(1);
+        let vblank = ppu.step(1, &memory);
 
         assert_eq!(ppu.read_register(0xFF41) & 0x03, 0); // HBlank
         assert!(!vblank);
@@ -142,15 +148,16 @@ mod tests {
     #[test]
     fn test_hblank_to_next_line() {
         let mut ppu = PPU::new();
+        let memory = Memory::new();
 
-        ppu.step(80); // OAMScan → Drawing
+        ppu.step(80, &memory); // OAMScan → Drawing
         assert_eq!(ppu.read_register(0xFF41) & 0x03, 3); // Drawing
 
-        ppu.step(172); // Drawing → HBlank  
+        ppu.step(172, &memory); // Drawing → HBlank  
         assert_eq!(ppu.read_register(0xFF41) & 0x03, 0); // HBlank ✅
         assert_eq!(ppu.ly, 0);
 
-        let vblank = ppu.step(204);
+        let vblank = ppu.step(204, &memory);
 
         assert_eq!(ppu.ly, 1);
         assert_eq!(ppu.read_register(0xFF41) & 0x03, 2); // OAMScan
@@ -160,6 +167,7 @@ mod tests {
     #[test]
     fn test_vblank_trigger() {
         let mut ppu = PPU::new();
+        let memory = Memory::new();
         let mut vblank_triggered = false;
 
         let mut total_cycles = 0u32;
@@ -175,7 +183,7 @@ mod tests {
                 _ => 24,       // CALL nn
             };
 
-            let vblank = ppu.step(cycles);
+            let vblank = ppu.step(cycles, &memory);
             if vblank {
                 vblank_triggered = true;
             }
@@ -191,8 +199,9 @@ mod tests {
     #[test]
     fn test_lcd_disable_realistic() {
         let mut ppu = PPU::new();
+        let memory = Memory::new();
 
-        advance_ppu_lines(&mut ppu, 1);
+        advance_ppu_lines(&mut ppu, &memory, 1);
 
         assert_eq!(ppu.ly, 1);
         assert!(ppu.read_register(0xFF41) & 0x03 != 0);
@@ -205,7 +214,7 @@ mod tests {
 
         let realistic_cycles = [4, 8, 12, 16, 20, 24];
         for i in 0..1000 {
-            ppu.step(realistic_cycles[i % realistic_cycles.len()]);
+            ppu.step(realistic_cycles[i % realistic_cycles.len()], &memory);
         }
         assert_eq!(ppu.ly, 0);
     }
@@ -213,6 +222,7 @@ mod tests {
     #[test]
     fn test_complete_frame() {
         let mut ppu = PPU::new();
+        let memory = Memory::new();
 
         let instructions = [
             ("NOP", 4),        // 4 cycles
@@ -231,7 +241,7 @@ mod tests {
 
         for i in 0..16000 {
             let (_, cycles) = instructions[i % instructions.len()];
-            let vblank = ppu.step(cycles);
+            let vblank = ppu.step(cycles, &memory);
 
             if vblank {
                 break;
@@ -243,7 +253,7 @@ mod tests {
 
         for i in 0..4560 {
             let (_, cycles) = instructions[i % instructions.len()];
-            ppu.step(cycles);
+            ppu.step(cycles, &memory);
 
             if ppu.ly == 0 {
                 break;

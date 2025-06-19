@@ -1,5 +1,6 @@
-use crate::memory::Memory;
+use crate::{debug, error, memory::Memory};
 
+#[derive(Debug, Clone)]
 pub struct PPU {
     // PPU registers
     pub lcdc: u8, // LCD Control
@@ -87,7 +88,7 @@ impl PPU {
             0xFF48 => self.obp0,
             0xFF49 => self.obp1,
             _ => {
-                println!("Register not implemented: 0x{:04X}", address);
+                error!("Register not implemented: 0x{:04X}", address);
                 0xFF
             }
         }
@@ -126,7 +127,7 @@ impl PPU {
                 self.decode_palette(value, "Object 1");
             }
             _ => {
-                println!(
+                error!(
                     "Register not implemented: 0x{:04X} = 0x{:02X}",
                     address, value
                 );
@@ -145,19 +146,19 @@ impl PPU {
         match self.mode {
             PPUMode::OAMScan => {
                 if self.cycles >= 80 {
-                    println!(
+                    debug!(
                         "OAMScan complete! {} -> Drawing (LY={})",
                         self.cycles, self.ly
                     );
                     self.cycles -= 80;
                     self.mode = PPUMode::Drawing;
                 } else {
-                    println!("OAMScan: {} / 80 cycles", self.cycles);
+                    debug!("OAMScan: {} / 80 cycles", self.cycles);
                 }
             }
             PPUMode::Drawing => {
                 if self.cycles >= 172 {
-                    println!(
+                    debug!(
                         "Drawing complete! {} -> HBlank (LY={})",
                         self.cycles, self.ly
                     );
@@ -167,12 +168,12 @@ impl PPU {
 
                     self.mode = PPUMode::HBLank;
                 } else {
-                    println!("Drawing: {} / 172 cycles", self.cycles);
+                    debug!("Drawing: {} / 172 cycles", self.cycles);
                 }
             }
             PPUMode::HBLank => {
                 if self.cycles >= 204 {
-                    println!("HBlank complete! LY {} -> {}", self.ly, self.ly + 1);
+                    debug!("HBlank complete! LY {} -> {}", self.ly, self.ly + 1);
                     self.cycles -= 204;
                     self.ly += 1;
 
@@ -183,7 +184,7 @@ impl PPU {
                         self.mode = PPUMode::OAMScan;
                     }
                 } else {
-                    println!(
+                    debug!(
                         "HBlank: {} / 204 cycles (need {} more)",
                         self.cycles,
                         204 - self.cycles
@@ -191,14 +192,14 @@ impl PPU {
                 }
             }
             PPUMode::VBlank => {
-                println!("VBlank processing: LY={}, cycles={}", self.ly, self.cycles);
+                debug!("VBlank processing: LY={}, cycles={}", self.ly, self.cycles);
                 if self.cycles >= 456 {
-                    println!("VBlank line complete! LY {} → {}", self.ly, self.ly + 1);
+                    debug!("VBlank line complete! LY {} → {}", self.ly, self.ly + 1);
                     self.cycles -= 456;
                     self.ly += 1;
 
                     if self.ly >= 154 {
-                        println!("VBlank finished! Resetting to LY=0, OAMScan");
+                        debug!("VBlank finished! Resetting to LY=0, OAMScan");
                         self.ly = 0;
                         self.mode = PPUMode::OAMScan;
                     }
@@ -219,66 +220,29 @@ impl PPU {
         (self.lcdc & 0x80) != 0
     }
 
-    // fn render_line(&mut self) {
-    //     let line = self.ly as usize;
-    //     if line >= 144 {
-    //         return;
-    //     }
-
-    //     for x in 0..160 {
-    //         let color = match (x / 40, line / 36) {
-    //             (0, 0) => 0, // White
-    //             (1, 0) => 1, // Light Gray
-    //             (2, 0) => 2, // Dark Gray
-    //             (3, 0) => 3, // Black
-    //             (0, 1) => 1,
-    //             (1, 1) => 2,
-    //             (2, 1) => 3,
-    //             (3, 1) => 0,
-    //             (0, 2) => 2,
-    //             (1, 2) => 3,
-    //             (2, 2) => 0,
-    //             (3, 2) => 1,
-    //             (0, 3) => 3,
-    //             (1, 3) => 0,
-    //             (2, 3) => 1,
-    //             (3, 3) => 2,
-    //             _ => (x + line) % 4, // Default pattern
-    //         };
-
-    //         self.framebuffer[line][x] = color as u8;
-    //     }
-    // }
-
-    // Exemple de vraie fonction render_line() qui lit la VRAM
     fn render_line(&mut self, memory: &Memory) {
         let line = self.ly as usize;
         if line >= 144 {
             return;
         }
 
-        // Vérifier si le background est activé
         if (self.lcdc & 0x01) == 0 {
-            // Background désactivé - remplir de blanc
             for x in 0..160 {
                 self.framebuffer[line][x] = 0;
             }
             return;
         }
 
-        // Calculer la ligne du background avec scrolling
         let bg_y = ((line as u8).wrapping_add(self.scy)) as usize;
-        let tile_y = bg_y / 8; // Quelle ligne de tiles
-        let pixel_y = bg_y % 8; // Quelle ligne dans le tile
+        let tile_y = bg_y / 8;
+        let pixel_y = bg_y % 8;
 
-        // Déterminer quelle map utiliser (LCDC bit 3)
         let bg_map_base = if (self.lcdc & 0x08) != 0 {
             0x9C00
         } else {
             0x9800
         };
 
-        // Déterminer quelle zone de tiles utiliser (LCDC bit 4)
         let tile_data_base = if (self.lcdc & 0x10) != 0 {
             0x8000
         } else {
@@ -287,36 +251,28 @@ impl PPU {
         let signed_tiles = (self.lcdc & 0x10) == 0;
 
         for x in 0..160 {
-            // Calculer la position du background avec scrolling
             let bg_x = ((x as u8).wrapping_add(self.scx)) as usize;
-            let tile_x = bg_x / 8; // Quelle colonne de tiles
-            let pixel_x = bg_x % 8; // Quelle colonne dans le tile
+            let tile_x = bg_x / 8;
+            let pixel_x = bg_x % 8;
 
-            // Lire l'ID du tile depuis la background map
             let tile_map_addr = bg_map_base + (tile_y * 32) + tile_x;
             let tile_id = memory.read_vram(tile_map_addr as u16);
 
-            // Calculer l'adresse du tile dans la VRAM
             let tile_addr = if signed_tiles {
-                // Mode signé: 0x9000 + (tile_id as i8 as i16) * 16
                 (0x9000_u16).wrapping_add(((tile_id as i8 as i16) * 16) as u16)
             } else {
-                // Mode non-signé: 0x8000 + tile_id * 16
                 tile_data_base + (tile_id as u16 * 16)
             };
 
-            // Lire les 2 bytes de la ligne du tile
             let line_addr = tile_addr + (pixel_y as u16 * 2);
             let byte1 = memory.read_vram(line_addr);
             let byte2 = memory.read_vram(line_addr + 1);
 
-            // Extraire la couleur du pixel (2 bits)
             let bit_pos = 7 - pixel_x;
             let color_bit_0 = (byte1 >> bit_pos) & 1;
             let color_bit_1 = (byte2 >> bit_pos) & 1;
             let color_id = (color_bit_1 << 1) | color_bit_0;
 
-            // Appliquer la palette background
             let final_color = self.apply_bg_palette(color_id);
 
             self.framebuffer[line][x] = final_color;
@@ -324,7 +280,6 @@ impl PPU {
     }
 
     fn apply_bg_palette(&self, color_id: u8) -> u8 {
-        // Extraire la couleur depuis la palette BGP
         let shift = color_id * 2;
         (self.bgp >> shift) & 0x03
     }
@@ -349,16 +304,16 @@ impl PPU {
     }
 
     pub fn print_screen(&self) {
-        println!("┌{}┐", "─".repeat(160));
+        println!("\n┌{}┐", "─".repeat(160));
 
         for line in self.framebuffer.iter() {
             print!("│");
             for &pixel in line.iter() {
                 let char = match pixel {
-                    0 => ' ', // Blanc
-                    1 => '░', // Gris clair
-                    2 => '▒', // Gris foncé
-                    3 => '█', // Noir
+                    0 => ' ', // White
+                    1 => '░', // Light Gray
+                    2 => '▒', // Dark Gray
+                    3 => '█', // Black
                     _ => '?',
                 };
                 print!("{}", char);
@@ -374,7 +329,7 @@ impl PPU {
             return;
         }
 
-        // Version réduite pour debug (80x36 au lieu de 160x144)
+        // Smaller debug print version (80x36 vs 160x144)
         println!("┌{}┐", "─".repeat(80));
 
         for y in (0..144).step_by(4) {
@@ -382,10 +337,10 @@ impl PPU {
             for x in (0..160).step_by(2) {
                 let pixel = self.framebuffer[y][x];
                 let char = match pixel {
-                    0 => ' ', // Blanc
-                    1 => '░', // Gris clair
-                    2 => '▒', // Gris foncé
-                    3 => '█', // Noir
+                    0 => ' ', // White
+                    1 => '░', // Light Gray
+                    2 => '▒', // Dark Gray
+                    3 => '█', // Black
                     _ => '?',
                 };
                 print!("{}", char);

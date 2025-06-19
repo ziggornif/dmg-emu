@@ -1,6 +1,5 @@
+use emulator::gameboy::Gameboy;
 use std::fs;
-
-use dmg_emu::gameboy::Gameboy;
 
 fn main() {
     println!("DMG EMU Booting ...");
@@ -16,9 +15,16 @@ fn main() {
         }
     }
 
+    let mut frame_count = 0;
+
     loop {
         gameboy.run_frame();
-        gameboy.print_debug_screen();
+        frame_count += 1;
+
+        if frame_count % 60 == 0 {
+            gameboy.print_debug_screen();
+            println!("Frame: {}", frame_count);
+        }
 
         std::thread::sleep(std::time::Duration::from_millis(16));
     }
