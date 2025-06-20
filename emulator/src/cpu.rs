@@ -373,7 +373,7 @@ impl CPU {
                 // LD B, n - Load immediate value into B
                 let value = bus.read_byte(self.pc);
                 self.b = value;
-                self.pc += 1;
+                self.pc = self.pc.wrapping_add(1);
                 8
             }
             0x07 => {
@@ -454,7 +454,7 @@ impl CPU {
             0x0E => {
                 // LD C, n - Load immediate into C
                 let value = bus.read_byte(self.pc);
-                self.pc += 1;
+                self.pc = self.pc.wrapping_add(1);
                 self.c = value;
 
                 8
@@ -475,7 +475,7 @@ impl CPU {
             0x10 => {
                 // STOP - Stop CPU until interrupt occurs
                 let _next_byte = bus.read_byte(self.pc);
-                self.pc += 1;
+                self.pc = self.pc.wrapping_add(1);
 
                 4
             }
@@ -530,7 +530,7 @@ impl CPU {
             0x16 => {
                 // LD D, n
                 let value = bus.read_byte(self.pc);
-                self.pc += 1;
+                self.pc = self.pc.wrapping_add(1);
                 self.d = value;
 
                 8
@@ -552,7 +552,7 @@ impl CPU {
             0x18 => {
                 // JR r8 - Jump relative
                 let offset = bus.read_byte(self.pc) as i8; // to get offset sign
-                self.pc += 1;
+                self.pc = self.pc.wrapping_add(1);
 
                 self.pc = ((self.pc as i32) + (offset as i32)) as u16;
 
@@ -615,7 +615,7 @@ impl CPU {
             0x1E => {
                 // LD E, n
                 let value = bus.read_byte(self.pc);
-                self.pc += 1;
+                self.pc = self.pc.wrapping_add(1);
                 self.e = value;
 
                 8
@@ -638,7 +638,7 @@ impl CPU {
             0x20 => {
                 // JR NZ, r8
                 let offset = bus.read_byte(self.pc) as i8;
-                self.pc += 1;
+                self.pc = self.pc.wrapping_add(1);
 
                 if !self.flag_z() {
                     self.pc = ((self.pc as i32) + (offset as i32)) as u16;
@@ -702,7 +702,7 @@ impl CPU {
             0x26 => {
                 // LD H, n - Load immediate value into H
                 let value = bus.read_byte(self.pc);
-                self.pc += 1;
+                self.pc = self.pc.wrapping_add(1);
                 self.h = value;
 
                 8
@@ -741,7 +741,7 @@ impl CPU {
             0x28 => {
                 // JR Z, r8 - Jump relative if zero flag is set
                 let offset = bus.read_byte(self.pc) as i8;
-                self.pc += 1;
+                self.pc = self.pc.wrapping_add(1);
 
                 if self.flag_z() {
                     self.pc = ((self.pc as i32) + (offset as i32)) as u16;
@@ -809,7 +809,7 @@ impl CPU {
             0x2E => {
                 // LD L, n
                 let value = bus.read_byte(self.pc);
-                self.pc += 1;
+                self.pc = self.pc.wrapping_add(1);
                 self.l = value;
 
                 8
@@ -827,7 +827,7 @@ impl CPU {
             0x30 => {
                 // JR NC, r8
                 let offset = bus.read_byte(self.pc) as i8;
-                self.pc += 1;
+                self.pc = self.pc.wrapping_add(1);
 
                 if !self.flag_c() {
                     self.pc = ((self.pc as i32) + (offset as i32)) as u16;
@@ -892,7 +892,7 @@ impl CPU {
             0x36 => {
                 // LD (HL), n
                 let value = bus.read_byte(self.pc);
-                self.pc += 1;
+                self.pc = self.pc.wrapping_add(1);
                 let addr = self.hl();
                 bus.write_byte(addr, value);
 
@@ -909,7 +909,7 @@ impl CPU {
             0x38 => {
                 // JR C, r8
                 let offset = bus.read_byte(self.pc) as i8;
-                self.pc += 1;
+                self.pc = self.pc.wrapping_add(1);
 
                 if self.flag_c() {
                     self.pc = ((self.pc as i32) + (offset as i32)) as u16;
@@ -976,7 +976,7 @@ impl CPU {
                 // LD A, n - Load immediate value into A
                 let value = bus.read_byte(self.pc);
                 self.a = value;
-                self.pc += 1;
+                self.pc = self.pc.wrapping_add(1);
                 8
             }
             0x3F => {
@@ -1101,7 +1101,7 @@ impl CPU {
             0xC6 => {
                 // ADD A, n - Add immediate value to A
                 let value = bus.read_byte(self.pc);
-                self.pc += 1;
+                self.pc = self.pc.wrapping_add(1);
 
                 self.alu_add(value);
 
@@ -1175,7 +1175,7 @@ impl CPU {
             0xCE => {
                 // ADC A, n - Add with carry
                 let value = bus.read_byte(self.pc);
-                self.pc += 1;
+                self.pc = self.pc.wrapping_add(1);
                 self.alu_adc(value);
 
                 8
@@ -1239,7 +1239,7 @@ impl CPU {
             0xD6 => {
                 // SUB A, n - Subtract immediate from A
                 let value = bus.read_byte(self.pc);
-                self.pc += 1;
+                self.pc = self.pc.wrapping_add(1);
 
                 self.alu_sub(value);
 
@@ -1303,7 +1303,7 @@ impl CPU {
             0xDE => {
                 // SBC A, n - Subtract with carry
                 let value = bus.read_byte(self.pc);
-                self.pc += 1;
+                self.pc = self.pc.wrapping_add(1);
                 self.alu_sbc(value);
 
                 8
@@ -1317,7 +1317,7 @@ impl CPU {
             0xE0 => {
                 // LDH (n), A - Load A into 0xFF00+n
                 let offset = bus.read_byte(self.pc);
-                self.pc += 1;
+                self.pc = self.pc.wrapping_add(1);
 
                 let address = 0xFF00 + (offset as u16);
                 bus.write_byte(address, self.a);
@@ -1354,7 +1354,7 @@ impl CPU {
             0xE6 => {
                 // AND A, n - Logical AND with immediate value
                 let value = bus.read_byte(self.pc);
-                self.pc += 1;
+                self.pc = self.pc.wrapping_add(1);
 
                 self.alu_and(value);
 
@@ -1411,7 +1411,7 @@ impl CPU {
             0xEE => {
                 // XOR A, n
                 let value = bus.read_byte(self.pc);
-                self.pc += 1;
+                self.pc = self.pc.wrapping_add(1);
                 self.alu_xor(value);
 
                 8
@@ -1426,7 +1426,7 @@ impl CPU {
             0xF0 => {
                 // LDH A, n - Load A from 0xFF00+n
                 let offset = bus.read_byte(self.pc);
-                self.pc += 1;
+                self.pc = self.pc.wrapping_add(1);
 
                 let address = 0xFF00 + (offset as u16);
                 self.a = bus.read_byte(address);
@@ -1464,7 +1464,7 @@ impl CPU {
             0xF6 => {
                 // OR A, n
                 let value = bus.read_byte(self.pc);
-                self.pc += 1;
+                self.pc = self.pc.wrapping_add(1);
                 self.alu_or(value);
 
                 8
@@ -1524,7 +1524,7 @@ impl CPU {
             0xFE => {
                 // CP A, n - Compare A with immediate
                 let value = bus.read_byte(self.pc);
-                self.pc += 1;
+                self.pc = self.pc.wrapping_add(1);
 
                 self.alu_cp(value);
 
