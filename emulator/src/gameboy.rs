@@ -55,6 +55,7 @@ impl Gameboy {
         let vblank_interrupt = self.bus.ppu_step(cycles);
 
         if vblank_interrupt && self.cpu.interrupts_enabled() {
+            self.cpu.wake_from_halt();
             self.handle_vblank_interrupt();
         }
 
