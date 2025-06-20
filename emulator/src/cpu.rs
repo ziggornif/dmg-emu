@@ -2003,11 +2003,6 @@ impl CPU {
                     8
                 }
             }
-
-            _ => {
-                error!("CB opcode not implemented: 0x{:02X}", cb_opcode);
-                8
-            }
         }
     }
 }
