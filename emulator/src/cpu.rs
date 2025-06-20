@@ -6,9 +6,11 @@ const FLAG_H: u8 = 0b00100000; // Half-Carry
 const FLAG_C: u8 = 0b00010000; // Carry
 
 const CB_RLC_CYCLES: u8 = 8;
+const CB_RRC_CYCLES: u8 = 8;
 const CB_RL_CYCLES: u8 = 8;
 const CB_RR_CYCLES: u8 = 8;
 const CB_SLA_CYCLES: u8 = 8;
+const CB_SRA_CYCLES: u8 = 8;
 const CB_SRL_CYCLES: u8 = 8;
 const CB_SWAP_CYCLES: u8 = 8;
 
@@ -1504,6 +1506,17 @@ impl CPU {
         result
     }
 
+    // RRC r - Rotate Right Circular
+    fn cb_rrc(&mut self, value: u8) -> u8 {
+        let first = value & 0x01;
+        let result = (value >> 1) | (first << 7);
+        self.set_flag_z(result == 0);
+        self.set_flag_n(false);
+        self.set_flag_h(false);
+        self.set_flag_c(first != 0);
+        result
+    }
+
     // RL r - Rotate Left through Carry
     fn cb_rl(&mut self, value: u8) -> u8 {
         let old_carry = if self.flag_c() { 1 } else { 0 };
@@ -1536,6 +1549,18 @@ impl CPU {
         self.set_flag_n(false);
         self.set_flag_h(false);
         self.set_flag_c(new_carry);
+        result
+    }
+
+    // SRA r - Shift Right Arithmetic
+    fn sra(&mut self, value: u8) -> u8 {
+        let last = value & 0x80;
+        let first = value & 0x01;
+        let result = (value >> 1) | last;
+        self.set_flag_z(result == 0);
+        self.set_flag_n(false);
+        self.set_flag_h(false);
+        self.set_flag_c(first != 0);
         result
     }
 
@@ -1593,10 +1618,63 @@ impl CPU {
                 self.l = self.cb_rlc(self.l);
                 CB_RLC_CYCLES
             }
+            0x06 => {
+                // RLC [HL]
+                let address = self.hl();
+                let value = bus.read_byte(address);
+                let result = self.cb_rlc(value);
+                bus.write_byte(address, result);
+                16
+            }
             0x07 => {
                 // RLC A
                 self.a = self.cb_rlc(self.a);
                 CB_RLC_CYCLES
+            }
+
+            // RRC r - Rotate Right Circular
+            0x08 => {
+                // RRC B
+                self.b = self.cb_rrc(self.b);
+                CB_RRC_CYCLES
+            }
+            0x09 => {
+                // RRC C
+                self.c = self.cb_rrc(self.c);
+                CB_RRC_CYCLES
+            }
+            0x0A => {
+                // RRC D
+                self.d = self.cb_rrc(self.d);
+                CB_RRC_CYCLES
+            }
+            0x0B => {
+                // RRC E
+                self.e = self.cb_rrc(self.e);
+                CB_RRC_CYCLES
+            }
+            0x0C => {
+                // RRC H
+                self.h = self.cb_rrc(self.h);
+                CB_RRC_CYCLES
+            }
+            0x0D => {
+                // RRC L
+                self.l = self.cb_rrc(self.l);
+                CB_RRC_CYCLES
+            }
+            0x0E => {
+                // RRC [HL]
+                let address = self.hl();
+                let value = bus.read_byte(address);
+                let result = self.cb_rrc(value);
+                bus.write_byte(address, result);
+                16
+            }
+            0x0F => {
+                // RRC A
+                self.a = self.cb_rrc(self.a);
+                CB_RRC_CYCLES
             }
 
             // RL r - Rotate Left through Carry
@@ -1629,6 +1707,14 @@ impl CPU {
                 // RL L
                 self.l = self.cb_rl(self.l);
                 CB_RL_CYCLES
+            }
+            0x16 => {
+                // RL [HL]
+                let address = self.hl();
+                let value = bus.read_byte(address);
+                let result = self.cb_rl(value);
+                bus.write_byte(address, result);
+                16
             }
             0x17 => {
                 // RL A
@@ -1669,6 +1755,14 @@ impl CPU {
                 self.l = self.cb_rr(self.l);
                 CB_RR_CYCLES
             }
+            0x1E => {
+                // RR [HL]
+                let address = self.hl();
+                let value = bus.read_byte(address);
+                let result = self.cb_rr(value);
+                bus.write_byte(address, result);
+                16
+            }
             0x1F => {
                 // RR A
                 self.a = self.cb_rr(self.a);
@@ -1706,47 +1800,63 @@ impl CPU {
                 self.l = self.sla(self.l);
                 CB_SLA_CYCLES
             }
+            0x26 => {
+                // SLA [HL]
+                let address = self.hl();
+                let value = bus.read_byte(address);
+                let result = self.sla(value);
+                bus.write_byte(address, result);
+                16
+            }
             0x27 => {
                 // SLA A
                 self.a = self.sla(self.a);
                 CB_SLA_CYCLES
             }
 
-            // SRL r - Shift Right Logical
-            0x38 => {
-                // SRL B
-                self.b = self.srl(self.b);
-                CB_SRL_CYCLES
+            // SRA r - Shift Right Arithmetic
+            0x28 => {
+                // SRA B
+                self.b = self.sra(self.b);
+                CB_SRA_CYCLES
             }
-            0x39 => {
-                // SRL C
-                self.c = self.srl(self.c);
-                CB_SRL_CYCLES
+            0x29 => {
+                // SRA C
+                self.c = self.sra(self.c);
+                CB_SRA_CYCLES
             }
-            0x3A => {
-                // SRL D
-                self.d = self.srl(self.b);
-                CB_SRL_CYCLES
+            0x2A => {
+                // SRA D
+                self.d = self.sra(self.d);
+                CB_SRA_CYCLES
             }
-            0x3B => {
-                // SRL E
-                self.e = self.srl(self.e);
-                CB_SRL_CYCLES
+            0x2B => {
+                // SRA E
+                self.e = self.sra(self.e);
+                CB_SRA_CYCLES
             }
-            0x3C => {
-                // SRL H
-                self.h = self.srl(self.h);
-                CB_SRL_CYCLES
+            0x2C => {
+                // SRA H
+                self.h = self.sra(self.h);
+                CB_SRA_CYCLES
             }
-            0x3D => {
-                // SRL L
-                self.l = self.srl(self.l);
-                CB_SRL_CYCLES
+            0x2D => {
+                // SRA L
+                self.l = self.sra(self.l);
+                CB_SRA_CYCLES
             }
-            0x3F => {
-                // SRL A
-                self.a = self.srl(self.a);
-                CB_SRL_CYCLES
+            0x2E => {
+                // SRA [HL]
+                let address = self.hl();
+                let value = bus.read_byte(address);
+                let result = self.sra(value);
+                bus.write_byte(address, result);
+                16
+            }
+            0x2F => {
+                // SRA A
+                self.a = self.sra(self.a);
+                CB_SRA_CYCLES
             }
 
             // SWAP r - Swap upper and lower 4 bits
@@ -1780,10 +1890,63 @@ impl CPU {
                 self.l = self.swap(self.l);
                 CB_SWAP_CYCLES
             }
+            0x36 => {
+                // SWAP [HL]
+                let address = self.hl();
+                let value = bus.read_byte(address);
+                let result = self.swap(value);
+                bus.write_byte(address, result);
+                16
+            }
             0x37 => {
                 // SWAP A
                 self.a = self.swap(self.a);
                 CB_SWAP_CYCLES
+            }
+
+            // SRL r - Shift Right Logical
+            0x38 => {
+                // SRL B
+                self.b = self.srl(self.b);
+                CB_SRL_CYCLES
+            }
+            0x39 => {
+                // SRL C
+                self.c = self.srl(self.c);
+                CB_SRL_CYCLES
+            }
+            0x3A => {
+                // SRL D
+                self.d = self.srl(self.b);
+                CB_SRL_CYCLES
+            }
+            0x3B => {
+                // SRL E
+                self.e = self.srl(self.e);
+                CB_SRL_CYCLES
+            }
+            0x3C => {
+                // SRL H
+                self.h = self.srl(self.h);
+                CB_SRL_CYCLES
+            }
+            0x3D => {
+                // SRL L
+                self.l = self.srl(self.l);
+                CB_SRL_CYCLES
+            }
+            0x3E => {
+                // SRL HL
+                let address = self.hl();
+                let value = bus.read_byte(address);
+                let result = self.srl(value);
+                bus.write_byte(address, result);
+                16
+            }
+            0x3F => {
+                // SRL A
+                self.a = self.srl(self.a);
+                CB_SRL_CYCLES
             }
 
             0x40..=0x7F => {
