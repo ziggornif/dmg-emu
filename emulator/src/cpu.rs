@@ -5,6 +5,7 @@ const FLAG_N: u8 = 0b01000000; // Subtraction
 const FLAG_H: u8 = 0b00100000; // Half-Carry
 const FLAG_C: u8 = 0b00010000; // Carry
 
+const CB_RLC_CYCLES: u8 = 8;
 const CB_RL_CYCLES: u8 = 8;
 const CB_RR_CYCLES: u8 = 8;
 const CB_SLA_CYCLES: u8 = 8;
@@ -1492,6 +1493,17 @@ impl CPU {
         }
     }
 
+    // RLC r - Rotate Left Circular
+    fn cb_rlc(&mut self, value: u8) -> u8 {
+        let carry = (value & 0x80) != 0;
+        let result = (value << 1) | if carry { 1 } else { 0 };
+        self.set_flag_z(result == 0);
+        self.set_flag_n(false);
+        self.set_flag_h(false);
+        self.set_flag_c(carry);
+        result
+    }
+
     // RL r - Rotate Left through Carry
     fn cb_rl(&mut self, value: u8) -> u8 {
         let old_carry = if self.flag_c() { 1 } else { 0 };
@@ -1550,6 +1562,43 @@ impl CPU {
 
     fn execute_cb(&mut self, cb_opcode: u8, bus: &mut Bus) -> u8 {
         match cb_opcode {
+            // RLC r - Rotate Left Circular
+            0x00 => {
+                // RLC B
+                self.b = self.cb_rlc(self.b);
+                CB_RLC_CYCLES
+            }
+            0x01 => {
+                // RLC C
+                self.c = self.cb_rlc(self.c);
+                CB_RLC_CYCLES
+            }
+            0x02 => {
+                // RLC D
+                self.d = self.cb_rlc(self.d);
+                CB_RLC_CYCLES
+            }
+            0x03 => {
+                // RLC E
+                self.e = self.cb_rlc(self.e);
+                CB_RLC_CYCLES
+            }
+            0x04 => {
+                // RLC H
+                self.h = self.cb_rlc(self.h);
+                CB_RLC_CYCLES
+            }
+            0x05 => {
+                // RLC L
+                self.l = self.cb_rlc(self.l);
+                CB_RLC_CYCLES
+            }
+            0x07 => {
+                // RLC A
+                self.a = self.cb_rlc(self.a);
+                CB_RLC_CYCLES
+            }
+
             // RL r - Rotate Left through Carry
             0x10 => {
                 // RL B
