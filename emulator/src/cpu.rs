@@ -69,6 +69,7 @@ impl CPU {
             3 => self.e,
             4 => self.h,
             5 => self.l,
+            6 => panic!("Register index 6 should be handled as (HL) memory access"),
             7 => self.a,
             _ => panic!("Invalid index register {}", index),
         }
@@ -195,6 +196,16 @@ impl CPU {
         bus.write_byte(self.sp, value as u8);
     }
 
+    pub fn debug_flags(&self) {
+        println!("F register: 0x{:02X} (Z:{} N:{} H:{} C:{} bits_bas:{:04b})",
+                 self.f,
+                 if self.flag_z() { 1 } else { 0 },
+                 if self.flag_n() { 1 } else { 0 },
+                 if self.flag_h() { 1 } else { 0 },
+                 if self.flag_c() { 1 } else { 0 },
+                 self.f & 0x0F);
+    }
+
     fn stack_pop(&mut self, bus: &mut Bus) -> u16 {
         let low = bus.read_byte(self.sp) as u16;
         self.sp = self.sp.wrapping_add(1);
@@ -301,7 +312,9 @@ impl CPU {
     }
 
     pub fn execute_instruction(&mut self, opcode: u8, bus: &mut Bus) -> u8 {
-        if self.halted { return 4; }
+        if self.halted {
+            return 4;
+        }
 
         match opcode {
             0x00 => {
@@ -388,7 +401,7 @@ impl CPU {
                 // ADD HL, BC
                 let hl_value = self.hl();
                 let bc_value = self.bc();
-                let result = hl_value.wrapping_add(self.bc());
+                let result = hl_value.wrapping_add(bc_value);
                 self.set_hl(result);
 
                 // Update flags
@@ -534,7 +547,7 @@ impl CPU {
                 self.set_flag_h(false);
                 self.set_flag_c(new_carry);
 
-                8
+                4
             }
             0x18 => {
                 // JR r8 - Jump relative
@@ -697,32 +710,31 @@ impl CPU {
             0x27 => {
                 // DAA - Decimal Adjust Accumulator
                 let mut a = self.a;
+                let mut carry = self.flag_c();
 
                 if !self.flag_n() {
-                    // Addition
+                    // Addition mode
                     if self.flag_h() || (a & 0x0F) > 0x09 {
                         a = a.wrapping_add(0x06);
                     }
-
-                    if self.flag_c() || a > 0x99 {
+                    if carry || a > 0x99 {
                         a = a.wrapping_add(0x60);
-                        self.set_flag_c(true);
+                        carry = true;
                     }
                 } else {
-                    // Subtraction
-                    if self.flag_c() {
-                        a = a.wrapping_sub(0x60);
-                    }
-
+                    // Subtraction mode
                     if self.flag_h() {
                         a = a.wrapping_sub(0x06);
+                    }
+                    if carry {
+                        a = a.wrapping_sub(0x60);
                     }
                 }
 
                 self.a = a;
-
                 self.set_flag_z(a == 0);
                 self.set_flag_h(false);
+                self.set_flag_c(carry);
 
                 4
             }
@@ -1488,7 +1500,7 @@ impl CPU {
                 8
             }
             0xFA => {
-                // LD (HL), A - Load A from absolute address
+                // LD A, (nn) - Load A from absolute address
                 let address = bus.read_word(self.pc);
                 self.pc = self.pc.wrapping_add(2);
                 self.a = bus.read_byte(address);
@@ -1610,7 +1622,7 @@ impl CPU {
     // SWAP r - Swap upper and lower 4 bits
     fn swap(&mut self, value: u8) -> u8 {
         let result = value.rotate_right(4);
-        self.set_flag_z(value == 0);
+        self.set_flag_z(result == 0);
         self.set_flag_n(false);
         self.set_flag_h(false);
         self.set_flag_c(false);
@@ -1618,6 +1630,10 @@ impl CPU {
     }
 
     fn execute_cb(&mut self, cb_opcode: u8, bus: &mut Bus) -> u8 {
+        if cb_opcode >= 0x40 && cb_opcode <= 0x7F {
+            println!("BIT instruction: 0x{:02X} (bit {} reg {}) at PC: 0x{:04X}",
+                     cb_opcode, (cb_opcode >> 3) & 0x07, cb_opcode & 0x07, self.pc - 1);
+        }
         match cb_opcode {
             // RLC r - Rotate Left Circular
             0x00 => {
@@ -1949,7 +1965,7 @@ impl CPU {
             }
             0x3A => {
                 // SRL D
-                self.d = self.srl(self.b);
+                self.d = self.srl(self.d);
                 CB_SRL_CYCLES
             }
             0x3B => {

@@ -43,7 +43,10 @@ impl Gameboy {
         }
 
         if let Some(data) = self.get_serial_output() {
-            info!("{}", data as char);
+            if data as char == ' ' {
+                print!("\n")
+            }
+            print!("{}", data as char);
         }
 
         self.validate_pc();
