@@ -1,9 +1,15 @@
-use crate::{bus::Bus, error};
+use crate::{bus::Bus, error, info};
 
 const FLAG_Z: u8 = 0b10000000; // Zero
 const FLAG_N: u8 = 0b01000000; // Subtraction
 const FLAG_H: u8 = 0b00100000; // Half-Carry
 const FLAG_C: u8 = 0b00010000; // Carry
+
+const CB_RL_CYCLES: u8 = 8;
+const CB_RR_CYCLES: u8 = 8;
+const CB_SLA_CYCLES: u8 = 8;
+const CB_SRL_CYCLES: u8 = 8;
+const CB_SWAP_CYCLES: u8 = 8;
 
 #[derive(Debug, Clone)]
 pub struct CPU {
@@ -23,6 +29,9 @@ pub struct CPU {
 
     // Interrupt Master Enable
     ime: bool,
+
+    // HALT state
+    pub halted: bool,
 }
 
 impl Default for CPU {
@@ -45,6 +54,7 @@ impl CPU {
             sp: 0xFFFE,
             pc: 0x0100,
             ime: false,
+            halted: false,
         }
     }
 
@@ -188,8 +198,7 @@ impl CPU {
         let high = bus.read_byte(self.sp) as u16;
         self.sp = self.sp.wrapping_add(1);
 
-        let result = (high << 8) | low;
-        result
+        (high << 8) | low
     }
 
     pub fn af(&self) -> u16 {
@@ -284,7 +293,13 @@ impl CPU {
         self.ime = false;
     }
 
+    pub fn wake_from_halt(&mut self) {
+        self.halted = false;
+    }
+
     pub fn execute_instruction(&mut self, opcode: u8, bus: &mut Bus) -> u8 {
+        if self.halted { return 4; }
+
         match opcode {
             0x00 => {
                 // NOP
@@ -393,6 +408,8 @@ impl CPU {
 
                 // 0x76 = HALT
                 if opcode == 0x76 {
+                    self.halted = true;
+                    info!("CPU HALT executed at PC: 0x{:04X}", self.pc.wrapping_sub(1));
                     return 4;
                 }
 
@@ -1224,177 +1241,8 @@ impl CPU {
             }
             0xCB => {
                 let cb_opcode = bus.read_byte(self.pc);
-                self.pc += 1;
-
-                match cb_opcode {
-                    0x11 => {
-                        // RL C - Rotate C left through carry
-                        let old_carry = if self.flag_c() { 1 } else { 0 };
-                        let new_carry = (self.c & 0x80) != 0;
-                        self.c = (self.c << 1) | old_carry;
-
-                        self.set_flag_z(self.c == 0);
-                        self.set_flag_n(false);
-                        self.set_flag_h(false);
-                        self.set_flag_c(new_carry);
-
-                        8
-                    }
-                    0x13 => {
-                        // RL C - Rotate C left through carry
-                        let old_carry = if self.flag_c() { 1 } else { 0 };
-                        let new_carry = (self.c & 0x80) != 0;
-                        self.e = (self.e << 1) | old_carry;
-
-                        self.set_flag_z(self.e == 0);
-                        self.set_flag_n(false);
-                        self.set_flag_h(false);
-                        self.set_flag_c(new_carry);
-
-                        8
-                    }
-                    // RR r - Rotate Right through Carry
-                    0x18 => {
-                        // RR B
-                        let old_carry = if self.flag_c() { 0x80 } else { 0 };
-                        let new_carry = (self.b & 0x01) != 0;
-                        self.b = (self.b >> 1) | old_carry;
-                        self.set_flag_z(self.b == 0);
-                        self.set_flag_n(false);
-                        self.set_flag_h(false);
-                        self.set_flag_c(new_carry);
-                        8
-                    }
-
-                    0x19 => {
-                        // RR C
-                        let old_carry = if self.flag_c() { 0x80 } else { 0 };
-                        let new_carry = (self.c & 0x01) != 0;
-                        self.c = (self.c >> 1) | old_carry;
-                        self.set_flag_z(self.c == 0);
-                        self.set_flag_n(false);
-                        self.set_flag_h(false);
-                        self.set_flag_c(new_carry);
-                        8
-                    }
-
-                    0x1A => {
-                        // RR D
-                        let old_carry = if self.flag_c() { 0x80 } else { 0 };
-                        let new_carry = (self.d & 0x01) != 0;
-                        self.d = (self.d >> 1) | old_carry;
-                        self.set_flag_z(self.d == 0);
-                        self.set_flag_n(false);
-                        self.set_flag_h(false);
-                        self.set_flag_c(new_carry);
-                        8
-                    }
-
-                    0x1B => {
-                        // RR E
-                        let old_carry = if self.flag_c() { 0x80 } else { 0 };
-                        let new_carry = (self.e & 0x01) != 0;
-                        self.e = (self.e >> 1) | old_carry;
-                        self.set_flag_z(self.e == 0);
-                        self.set_flag_n(false);
-                        self.set_flag_h(false);
-                        self.set_flag_c(new_carry);
-                        8
-                    }
-
-                    // SRL r - Shift Right Logical
-                    0x38 => {
-                        // SRL B
-                        let new_carry = (self.b & 0x01) != 0;
-                        self.b >>= 1;
-                        self.set_flag_z(self.b == 0);
-                        self.set_flag_n(false);
-                        self.set_flag_h(false);
-                        self.set_flag_c(new_carry);
-                        8
-                    }
-
-                    0x3F => {
-                        // SRL A
-                        let new_carry = (self.a & 0x01) != 0;
-                        self.a >>= 1;
-                        self.set_flag_z(self.a == 0);
-                        self.set_flag_n(false);
-                        self.set_flag_h(false);
-                        self.set_flag_c(new_carry);
-                        8
-                    }
-
-                    0x37 => {
-                        // SWAP A - Swap upper and lower 4 bits
-                        self.a = (self.a << 4) | (self.a >> 4);
-                        self.set_flag_z(self.a == 0);
-                        self.set_flag_n(false);
-                        self.set_flag_h(false);
-                        self.set_flag_c(false);
-                        8
-                    }
-
-                    0x40..=0x7F => {
-                        // BIT n, r - Test bit n in register r
-                        let bit_number = (cb_opcode >> 3) & 0x07;
-                        let register = cb_opcode & 0x07;
-
-                        let value = if register == 6 {
-                            bus.read_byte(self.hl())
-                        } else {
-                            self.get_register(register)
-                        };
-
-                        let bit_set = (value & (1 << bit_number)) != 0;
-
-                        // Update flags
-                        self.set_flag_z(!bit_set);
-                        self.set_flag_n(false);
-                        self.set_flag_h(true);
-
-                        if register == 6 { 12 } else { 8 }
-                    }
-
-                    0x80..=0xBF => {
-                        // RES n, r - Reset bit n in register r
-                        let bit_number = (cb_opcode >> 3) & 0x07;
-                        let register = cb_opcode & 0x07;
-
-                        if register == 6 {
-                            let address = self.hl();
-                            let value = bus.read_byte(address);
-                            bus.write_byte(address, value & !(1 << bit_number));
-                            16
-                        } else {
-                            let value = self.get_register(register);
-                            self.set_register(register, value);
-                            8
-                        }
-                    }
-
-                    0xC0..=0xFF => {
-                        // SET n, r - Set bit n in register r
-                        let bit_number = (cb_opcode >> 3) & 0x07;
-                        let register = cb_opcode & 0x07;
-
-                        if register == 6 {
-                            let address = self.hl();
-                            let value = bus.read_byte(address);
-                            bus.write_byte(address, value | (1 << bit_number));
-                            16
-                        } else {
-                            let value = self.get_register(register) | (1 << bit_number);
-                            self.set_register(register, value);
-                            8
-                        }
-                    }
-
-                    _ => {
-                        error!("CB opcode not implemented: 0x{:02X}", cb_opcode);
-                        8
-                    }
-                }
+                self.pc = self.pc.wrapping_add(1);
+                self.execute_cb(cb_opcode, bus)
             }
             0x35 => {
                 // DEC (HL) - Decrement value at HL address
@@ -1570,10 +1418,383 @@ impl CPU {
 
                 16
             }
+            0x37 => {
+                // SCF - Set Carry Flag
+                self.set_flag_n(false);
+                self.set_flag_h(false);
+                self.set_flag_c(true);
+
+                4
+            }
+            0x3F => {
+                // CCF - Complement Carry Flag
+                self.set_flag_n(false);
+                self.set_flag_h(false);
+                self.set_flag_c(!self.flag_c());
+
+                4
+            }
+
+            // RST instructions
+            0xC7 => {
+                // RST 00H - Call address 0x0000
+                self.stack_push(bus, self.pc);
+                self.pc = 0x0000;
+                16
+            }
+            0xCF => {
+                // RST 08H - Call address 0x0008
+                self.stack_push(bus, self.pc);
+                self.pc = 0x0008;
+                16
+            }
+            0xD7 => {
+                // RST 10H - Call address 0x0010
+                self.stack_push(bus, self.pc);
+                self.pc = 0x0010;
+                16
+            }
+            0xE7 => {
+                // RST 20H - Call address 0x0020
+                self.stack_push(bus, self.pc);
+                self.pc = 0x0020;
+                16
+            }
+            0xF7 => {
+                // RST 30H - Call address 0x0030
+                self.stack_push(bus, self.pc);
+                self.pc = 0x0030;
+                16
+            }
+
+            // Additional LD instructions
+            0xF2 => {
+                // LD A, (0xFF00+C) - Load A from address 0xFF00 + C
+                let address = 0xFF00 + self.c as u16;
+                self.a = bus.read_byte(address);
+                8
+            }
+
+            // Additional missing instructions that are commonly needed
+            0x3A => {
+                // LD A, (HL-) - Load A from HL, then decrement HL
+                let address = self.hl();
+                self.a = bus.read_byte(address);
+                let new_hl = address.wrapping_sub(1);
+                self.set_hl(new_hl);
+                8
+            }
             _ => {
                 error!("Opcode not implemented: 0x{:02X}", opcode);
 
                 4
+            }
+        }
+    }
+
+    // RL r - Rotate Left through Carry
+    fn cb_rl(&mut self, value: u8) -> u8 {
+        let old_carry = if self.flag_c() { 1 } else { 0 };
+        let new_carry = (value & 0x80) != 0;
+        let result = (value << 1) | old_carry;
+        self.set_flag_z(result == 0);
+        self.set_flag_n(false);
+        self.set_flag_h(false);
+        self.set_flag_c(new_carry);
+        result
+    }
+
+    // RR r - Rotate Right through Carry
+    fn cb_rr(&mut self, value: u8) -> u8 {
+        let old_carry = if self.flag_c() { 0x80 } else { 0 };
+        let new_carry = (value & 0x01) != 0;
+        let result = (value >> 1) | old_carry;
+        self.set_flag_z(result == 0);
+        self.set_flag_n(false);
+        self.set_flag_h(false);
+        self.set_flag_c(new_carry);
+        result
+    }
+
+    // SLA r - Shift Left Arithmetic
+    fn sla(&mut self, value: u8) -> u8 {
+        let new_carry = (value & 0x80) != 0;
+        let result = value << 1;
+        self.set_flag_z(result == 0);
+        self.set_flag_n(false);
+        self.set_flag_h(false);
+        self.set_flag_c(new_carry);
+        result
+    }
+
+    // SRL r - Shift Right Logical
+    fn srl(&mut self, value: u8) -> u8 {
+        let new_carry = (value & 0x01) != 0;
+        let result = value >> 1;
+        self.set_flag_z(result == 0);
+        self.set_flag_n(false);
+        self.set_flag_h(false);
+        self.set_flag_c(new_carry);
+        result
+    }
+
+    // SWAP r - Swap upper and lower 4 bits
+    fn swap(&mut self, value: u8) -> u8 {
+        let result = value.rotate_right(4);
+        self.set_flag_z(value == 0);
+        self.set_flag_n(false);
+        self.set_flag_h(false);
+        self.set_flag_c(false);
+        result
+    }
+
+    fn execute_cb(&mut self, cb_opcode: u8, bus: &mut Bus) -> u8 {
+        match cb_opcode {
+            // RL r - Rotate Left through Carry
+            0x10 => {
+                // RL B
+                self.b = self.cb_rl(self.b);
+                CB_RL_CYCLES
+            }
+            0x11 => {
+                // RL C - Rotate C left through carry
+                self.c = self.cb_rl(self.c);
+                CB_RL_CYCLES
+            }
+            0x12 => {
+                // RL D
+                self.d = self.cb_rl(self.d);
+                CB_RL_CYCLES
+            }
+            0x13 => {
+                // RL E - Rotate E left through carry
+                self.e = self.cb_rl(self.e);
+                CB_RL_CYCLES
+            }
+            0x14 => {
+                // RL H
+                self.h = self.cb_rl(self.h);
+                CB_RL_CYCLES
+            }
+            0x15 => {
+                // RL L
+                self.l = self.cb_rl(self.l);
+                CB_RL_CYCLES
+            }
+            0x17 => {
+                // RL A
+                self.a = self.cb_rl(self.a);
+                CB_RL_CYCLES
+            }
+            // RR r - Rotate Right through Carry
+            0x18 => {
+                // RR B
+                self.b = self.cb_rr(self.b);
+                CB_RR_CYCLES
+            }
+
+            0x19 => {
+                // RR C
+                self.c = self.cb_rr(self.c);
+                CB_RR_CYCLES
+            }
+
+            0x1A => {
+                // RR D
+                self.d = self.cb_rr(self.d);
+                CB_RR_CYCLES
+            }
+
+            0x1B => {
+                // RR E
+                self.e = self.cb_rr(self.e);
+                CB_RR_CYCLES
+            }
+            0x1C => {
+                // RR H
+                self.h = self.cb_rr(self.h);
+                CB_RR_CYCLES
+            }
+            0x1D => {
+                // RR L
+                self.l = self.cb_rr(self.l);
+                CB_RR_CYCLES
+            }
+            0x1F => {
+                // RR A
+                self.a = self.cb_rr(self.a);
+                CB_RR_CYCLES
+            }
+
+            // SLA r - Shift Left Arithmetic
+            0x20 => {
+                // SLA B
+                self.b = self.sla(self.b);
+                CB_SLA_CYCLES
+            }
+            0x21 => {
+                // SLA C
+                self.c = self.sla(self.c);
+                CB_SLA_CYCLES
+            }
+            0x22 => {
+                // SLA D
+                self.d = self.sla(self.d);
+                CB_SLA_CYCLES
+            }
+            0x23 => {
+                // SLA E
+                self.e = self.sla(self.e);
+                CB_SLA_CYCLES
+            }
+            0x24 => {
+                // SLA H
+                self.h = self.sla(self.h);
+                CB_SLA_CYCLES
+            }
+            0x25 => {
+                // SLA L
+                self.l = self.sla(self.l);
+                CB_SLA_CYCLES
+            }
+            0x27 => {
+                // SLA A
+                self.a = self.sla(self.a);
+                CB_SLA_CYCLES
+            }
+
+            // SRL r - Shift Right Logical
+            0x38 => {
+                // SRL B
+                self.b = self.srl(self.b);
+                CB_SRL_CYCLES
+            }
+            0x39 => {
+                // SRL C
+                self.c = self.srl(self.c);
+                CB_SRL_CYCLES
+            }
+            0x3A => {
+                // SRL D
+                self.d = self.srl(self.b);
+                CB_SRL_CYCLES
+            }
+            0x3B => {
+                // SRL E
+                self.e = self.srl(self.e);
+                CB_SRL_CYCLES
+            }
+            0x3C => {
+                // SRL H
+                self.h = self.srl(self.h);
+                CB_SRL_CYCLES
+            }
+            0x3D => {
+                // SRL L
+                self.l = self.srl(self.l);
+                CB_SRL_CYCLES
+            }
+            0x3F => {
+                // SRL A
+                self.a = self.srl(self.a);
+                CB_SRL_CYCLES
+            }
+
+            // SWAP r - Swap upper and lower 4 bits
+            0x30 => {
+                // SWAP B
+                self.b = self.swap(self.b);
+                CB_SWAP_CYCLES
+            }
+            0x31 => {
+                // SWAP C
+                self.c = self.swap(self.c);
+                CB_SWAP_CYCLES
+            }
+            0x32 => {
+                // SWAP D
+                self.d = self.swap(self.d);
+                CB_SWAP_CYCLES
+            }
+            0x33 => {
+                // SWAP E
+                self.e = self.swap(self.e);
+                CB_SWAP_CYCLES
+            }
+            0x34 => {
+                // SWAP H
+                self.h = self.swap(self.h);
+                CB_SWAP_CYCLES
+            }
+            0x35 => {
+                // SWAP L
+                self.l = self.swap(self.l);
+                CB_SWAP_CYCLES
+            }
+            0x37 => {
+                // SWAP A
+                self.a = self.swap(self.a);
+                CB_SWAP_CYCLES
+            }
+
+            0x40..=0x7F => {
+                // BIT n, r - Test bit n in register r
+                let bit_number = (cb_opcode >> 3) & 0x07;
+                let register = cb_opcode & 0x07;
+
+                let value = if register == 6 {
+                    bus.read_byte(self.hl())
+                } else {
+                    self.get_register(register)
+                };
+
+                let bit_set = (value & (1 << bit_number)) != 0;
+
+                // Update flags
+                self.set_flag_z(!bit_set);
+                self.set_flag_n(false);
+                self.set_flag_h(true);
+
+                if register == 6 { 12 } else { 8 }
+            }
+
+            0x80..=0xBF => {
+                // RES n, r - Reset bit n in register r
+                let bit_number = (cb_opcode >> 3) & 0x07;
+                let register = cb_opcode & 0x07;
+
+                if register == 6 {
+                    let address = self.hl();
+                    let value = bus.read_byte(address);
+                    bus.write_byte(address, value & !(1 << bit_number));
+                    16
+                } else {
+                    let value = self.get_register(register);
+                    self.set_register(register, value & !(1 << bit_number));
+                    8
+                }
+            }
+
+            0xC0..=0xFF => {
+                // SET n, r - Set bit n in register r
+                let bit_number = (cb_opcode >> 3) & 0x07;
+                let register = cb_opcode & 0x07;
+
+                if register == 6 {
+                    let address = self.hl();
+                    let value = bus.read_byte(address);
+                    bus.write_byte(address, value | (1 << bit_number));
+                    16
+                } else {
+                    let value = self.get_register(register) | (1 << bit_number);
+                    self.set_register(register, value);
+                    8
+                }
+            }
+
+            _ => {
+                error!("CB opcode not implemented: 0x{:02X}", cb_opcode);
+                8
             }
         }
     }
