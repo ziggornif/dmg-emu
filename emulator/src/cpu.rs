@@ -1,4 +1,4 @@
-use crate::{bus::Bus, info};
+use crate::{bus::Bus, debug, info};
 
 const FLAG_Z: u8 = 0b10000000; // Zero
 const FLAG_N: u8 = 0b01000000; // Subtraction
@@ -197,13 +197,15 @@ impl CPU {
     }
 
     pub fn debug_flags(&self) {
-        println!("F register: 0x{:02X} (Z:{} N:{} H:{} C:{} bits_bas:{:04b})",
-                 self.f,
-                 if self.flag_z() { 1 } else { 0 },
-                 if self.flag_n() { 1 } else { 0 },
-                 if self.flag_h() { 1 } else { 0 },
-                 if self.flag_c() { 1 } else { 0 },
-                 self.f & 0x0F);
+        debug!(
+            "F register: 0x{:02X} (Z:{} N:{} H:{} C:{} bits_bas:{:04b})",
+            self.f,
+            if self.flag_z() { 1 } else { 0 },
+            if self.flag_n() { 1 } else { 0 },
+            if self.flag_h() { 1 } else { 0 },
+            if self.flag_c() { 1 } else { 0 },
+            self.f & 0x0F
+        );
     }
 
     fn stack_pop(&mut self, bus: &mut Bus) -> u16 {
@@ -1630,10 +1632,6 @@ impl CPU {
     }
 
     fn execute_cb(&mut self, cb_opcode: u8, bus: &mut Bus) -> u8 {
-        if cb_opcode >= 0x40 && cb_opcode <= 0x7F {
-            println!("BIT instruction: 0x{:02X} (bit {} reg {}) at PC: 0x{:04X}",
-                     cb_opcode, (cb_opcode >> 3) & 0x07, cb_opcode & 0x07, self.pc - 1);
-        }
         match cb_opcode {
             // RLC r - Rotate Left Circular
             0x00 => {

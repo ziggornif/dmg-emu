@@ -1,9 +1,11 @@
-use crate::{debug, memory::Memory, ppu::PPU};
+use crate::{debug, joypad::Joypad, joypad::JoypadButton, memory::Memory, ppu::PPU, timer::Timer};
 
 #[derive(Debug, Clone)]
 pub struct Bus {
     pub memory: Memory,
     pub ppu: PPU,
+    pub timer: Timer,
+    pub joypad: Joypad,
 }
 
 impl Bus {
@@ -11,11 +13,18 @@ impl Bus {
         Self {
             memory: Memory::new(),
             ppu: PPU::new(),
+            timer: Timer::new(),
+            joypad: Joypad::new(),
         }
     }
 
     pub fn read_byte(&self, address: u16) -> u8 {
         match address {
+            0xFF04..=0xFF07 => self.timer.read_register(address),
+            0xFF00 => {
+                let result = self.joypad.read_register();
+                result
+            }
             0xFF46 => 0xFF, // DMA register is always 0xFF
             0xFF40..=0xFF4B => self.ppu.read_register(address),
             0x8000..=0x9FFF => {
@@ -38,6 +47,10 @@ impl Bus {
 
     pub fn write_byte(&mut self, address: u16, value: u8) {
         match address {
+            0xFF04..=0xFF07 => self.timer.write_register(address, value),
+            0xFF00 => {
+                self.joypad.write_register(value);
+            }
             0xFF01 => {
                 debug!(
                     "Serial data write: 0x{:02X} ('{}')",
@@ -101,6 +114,19 @@ impl Bus {
 
     pub fn load_rom(&mut self, rom_data: &[u8]) -> Result<(), String> {
         self.memory.load_rom(rom_data)
+    }
+
+    pub fn timer_step(&mut self, cpu_cycles: u8) -> bool {
+        self.timer.step(cpu_cycles);
+        self.timer.take_interrupt()
+    }
+
+    pub fn set_joypad_input(&mut self, button: JoypadButton, pressed: bool) {
+        self.joypad.set_button(button, pressed);
+    }
+
+    pub fn joypad_interrupt(&self) -> bool {
+        self.joypad.button_pressed()
     }
 
     pub fn ppu_step(&mut self, cpu_cycles: u8) -> bool {
