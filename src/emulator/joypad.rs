@@ -47,17 +47,33 @@ impl Joypad {
         }
 
         if self.select_buttons {
-            if self.a { result &= !0x01; }
-            if self.b { result &= !0x02; }
-            if self.select { result &= !0x04; }
-            if self.start { result &= !0x08; }
+            if self.a {
+                result &= !0x01;
+            }
+            if self.b {
+                result &= !0x02;
+            }
+            if self.select {
+                result &= !0x04;
+            }
+            if self.start {
+                result &= !0x08;
+            }
         }
 
         if self.select_directions {
-            if self.right { result &= !0x01; }
-            if self.left { result &= !0x02; }
-            if self.up { result &= !0x04; }
-            if self.down { result &= !0x08; }
+            if self.right {
+                result &= !0x01;
+            }
+            if self.left {
+                result &= !0x02;
+            }
+            if self.up {
+                result &= !0x04;
+            }
+            if self.down {
+                result &= !0x08;
+            }
         }
 
         result
@@ -83,7 +99,8 @@ impl Joypad {
 
     pub fn button_pressed(&self) -> bool {
         let buttons_active = self.select_buttons && (self.a || self.b || self.select || self.start);
-        let directions_active = self.select_directions && (self.right || self.left || self.up || self.down);
+        let directions_active =
+            self.select_directions && (self.right || self.left || self.up || self.down);
 
         buttons_active || directions_active
     }

@@ -1,4 +1,4 @@
-use crate::{debug, error, memory::Memory};
+use crate::{debug, emulator::memory::Memory, error};
 
 #[derive(Debug, Clone)]
 pub struct PPU {
@@ -116,15 +116,12 @@ impl PPU {
             0xFF4B => self.wx = value,
             0xFF47 => {
                 self.bgp = value;
-                self.decode_palette(value, "Background");
             }
             0xFF48 => {
                 self.obp0 = value;
-                self.decode_palette(value, "Object 0");
             }
             0xFF49 => {
                 self.obp1 = value;
-                self.decode_palette(value, "Object 1");
             }
             _ => {
                 error!(
@@ -226,13 +223,23 @@ impl PPU {
             return;
         }
 
-        if (self.lcdc & 0x01) == 0 {
-            for x in 0..160 {
-                self.framebuffer[line][x] = 0;
-            }
-            return;
+        // Effacer la ligne
+        for x in 0..160 {
+            self.framebuffer[line][x] = 0;
         }
 
+        // 1. RENDU DU BACKGROUND (existant)
+        if (self.lcdc & 0x01) != 0 {
+            self.render_background_line(memory, line);
+        }
+
+        // 2. RENDU DES SPRITES (NOUVEAU!)
+        if (self.lcdc & 0x02) != 0 {
+            self.render_sprites_line(memory, line);
+        }
+    }
+
+    fn render_background_line(&mut self, memory: &Memory, line: usize) {
         let bg_y = ((line as u8).wrapping_add(self.scy)) as usize;
         let tile_y = bg_y / 8;
         let pixel_y = bg_y % 8;
@@ -279,28 +286,72 @@ impl PPU {
         }
     }
 
+    fn render_sprites_line(&mut self, memory: &Memory, line: usize) {
+        let sprite_height = if (self.lcdc & 0x04) != 0 { 16 } else { 8 };
+
+        for sprite_index in 0..40 {
+            let oam_addr = 0xFE00 + (sprite_index * 4);
+
+            let sprite_y = memory.read_oam(oam_addr) as i16 - 16;
+            let sprite_x = memory.read_oam(oam_addr + 1) as i16 - 8;
+            let tile_index = memory.read_oam(oam_addr + 2);
+            let attributes = memory.read_oam(oam_addr + 3);
+
+            if (line as i16) >= sprite_y && (line as i16) < sprite_y + sprite_height {
+                let tile_line = if (attributes & 0x40) != 0 {
+                    sprite_height - 1 - ((line as i16) - sprite_y)
+                } else {
+                    (line as i16) - sprite_y
+                } as usize;
+
+                let tile_addr = 0x8000 + (tile_index as u16 * 16) + (tile_line as u16 * 2);
+                let byte1 = memory.read_vram(tile_addr);
+                let byte2 = memory.read_vram(tile_addr + 1);
+
+                for pixel_x in 0..8 {
+                    let screen_x = sprite_x + pixel_x;
+
+                    if !(0..160).contains(&screen_x) {
+                        continue;
+                    }
+
+                    let bit_pos = if (attributes & 0x20) != 0 {
+                        pixel_x
+                    } else {
+                        7 - pixel_x
+                    };
+
+                    let color_bit_0 = (byte1 >> bit_pos) & 1;
+                    let color_bit_1 = (byte2 >> bit_pos) & 1;
+                    let color_id = (color_bit_1 << 1) | color_bit_0;
+
+                    if color_id != 0 {
+                        let palette = if (attributes & 0x10) != 0 {
+                            self.obp1
+                        } else {
+                            self.obp0
+                        };
+
+                        let final_color = self.apply_sprite_palette(color_id, palette);
+
+                        let behind_bg = (attributes & 0x80) != 0;
+                        if !behind_bg || self.framebuffer[line][screen_x as usize] == 0 {
+                            self.framebuffer[line][screen_x as usize] = final_color;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     fn apply_bg_palette(&self, color_id: u8) -> u8 {
         let shift = color_id * 2;
         (self.bgp >> shift) & 0x03
     }
 
-    // Display current palette
-    fn decode_palette(&self, palette: u8, name: &str) {
-        let color0 = palette & 0x03;
-        let color1 = (palette >> 2) & 0x03;
-        let color2 = (palette >> 4) & 0x03;
-        let color3 = (palette >> 6) & 0x03;
-
-        let color_names = ["White", "Light Gray", "Dark Gray", "Black"];
-
-        println!(
-            "  {} palette: {} -> {} -> {} -> {}",
-            name,
-            color_names[color0 as usize],
-            color_names[color1 as usize],
-            color_names[color2 as usize],
-            color_names[color3 as usize]
-        );
+    fn apply_sprite_palette(&self, color_id: u8, palette: u8) -> u8 {
+        let shift = color_id * 2;
+        (palette >> shift) & 0x03
     }
 
     pub fn print_screen(&self) {
@@ -322,32 +373,5 @@ impl PPU {
         }
 
         println!("└{}┘", "─".repeat(160));
-    }
-
-    pub fn print_screen_small(&self) {
-        if !self.is_lcd_enabled() {
-            return;
-        }
-
-        // Smaller debug print version (80x36 vs 160x144)
-        println!("┌{}┐", "─".repeat(80));
-
-        for y in (0..144).step_by(4) {
-            print!("│");
-            for x in (0..160).step_by(2) {
-                let pixel = self.framebuffer[y][x];
-                let char = match pixel {
-                    0 => ' ', // White
-                    1 => '░', // Light Gray
-                    2 => '▒', // Dark Gray
-                    3 => '█', // Black
-                    _ => '?',
-                };
-                print!("{}", char);
-            }
-            println!("│");
-        }
-
-        println!("└{}┘", "─".repeat(80));
     }
 }

@@ -1,4 +1,7 @@
-use crate::{debug, joypad::Joypad, joypad::JoypadButton, memory::Memory, ppu::PPU, timer::Timer};
+use crate::debug;
+use crate::emulator::{
+    joypad::Joypad, joypad::JoypadButton, memory::Memory, ppu::PPU, timer::Timer,
+};
 
 #[derive(Debug, Clone)]
 pub struct Bus {
@@ -21,10 +24,7 @@ impl Bus {
     pub fn read_byte(&self, address: u16) -> u8 {
         match address {
             0xFF04..=0xFF07 => self.timer.read_register(address),
-            0xFF00 => {
-                let result = self.joypad.read_register();
-                result
-            }
+            0xFF00 => self.joypad.read_register(),
             0xFF46 => 0xFF, // DMA register is always 0xFF
             0xFF40..=0xFF4B => self.ppu.read_register(address),
             0x8000..=0x9FFF => {

@@ -1,4 +1,4 @@
-use crate::{bus::Bus, debug, info};
+use crate::{debug, emulator::bus::Bus, info};
 
 const FLAG_Z: u8 = 0b10000000; // Zero
 const FLAG_N: u8 = 0b01000000; // Subtraction
