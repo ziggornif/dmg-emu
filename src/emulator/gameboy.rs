@@ -1,5 +1,5 @@
-use crate::joypad::JoypadButton;
-use crate::{bus::Bus, cpu::CPU, debug, error, print_cpu_state, print_ppu_state};
+use crate::emulator::{bus::Bus, cpu::CPU, joypad::JoypadButton};
+use crate::{debug, error, print_cpu_state, print_ppu_state};
 
 #[derive(Debug, Clone)]
 pub struct Gameboy {
@@ -64,14 +64,14 @@ impl Gameboy {
             self.pc_repeat_count = 0;
         }
 
-        if let Some(data) = self.get_serial_output() {
-            let ch = data as char;
-            if ch == '\n' || ch == ' ' {
-                print!("\n");
-            } else {
-                print!("{}", ch);
-            }
-        }
+        // if let Some(data) = self.get_serial_output() {
+        //     let ch = data as char;
+        //     if ch == '\n' || ch == ' ' {
+        //         println!();
+        //     } else {
+        //         print!("{}", ch);
+        //     }
+        // }
 
         self.validate_pc();
 
