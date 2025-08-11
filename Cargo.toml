@@ -10,5 +10,5 @@ name = "emulator"
 opt-level = 0
 
 [dependencies]
-eframe = "0.28"
-egui = "0.28"
+eframe = "0.32.0"
+egui = "0.32.0"
