@@ -3,6 +3,9 @@ name = "dmg-emu"
 version = "0.1.0"
 edition = "2024"
 
+[lib]
+name = "emulator"
+
 [profile.dev]
 opt-level = 0
 

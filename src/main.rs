@@ -1,4 +1,4 @@
-use dmg_emu::emulator::gui::GameBoyApp;
+use emulator::gui::GameBoyApp;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let native_options = eframe::NativeOptions::default();

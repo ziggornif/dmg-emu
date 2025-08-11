@@ -1,7 +1,7 @@
 use crate::emulator::gameboy::Gameboy;
 use crate::emulator::joypad::JoypadButton;
 use eframe::egui;
-use egui::{Color32, ColorImage, Key, TextureHandle, Vec2};
+use egui::{ColorImage, Key, TextureHandle, Vec2};
 
 pub struct GameBoyApp {
     gameboy: Gameboy,
@@ -124,14 +124,12 @@ impl eframe::App for GameBoyApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         self.handle_input(ctx);
 
-        if !self.paused {
-            if self.frame_time.elapsed().as_millis() >= 8 {
-                for _ in 0..2 {
-                    self.gameboy.run_frame();
-                }
-                self.frame_time = std::time::Instant::now();
-                self.update_fps();
+        if !self.paused && self.frame_time.elapsed().as_millis() >= 8 {
+            for _ in 0..2 {
+                self.gameboy.run_frame();
             }
+            self.frame_time = std::time::Instant::now();
+            self.update_fps();
         }
 
         self.update_texture(ctx);
