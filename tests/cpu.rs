@@ -56,9 +56,9 @@ mod tests {
 
         assert_eq!(cycles, 4);
         assert_eq!(cpu.a, 0x0F);
-        assert_eq!(cpu.flag_z(), false);
-        assert_eq!(cpu.flag_n(), false);
-        assert_eq!(cpu.flag_h(), false);
+        assert!(!cpu.flag_z());
+        assert!(!cpu.flag_n());
+        assert!(!cpu.flag_h());
     }
 
     #[test]
@@ -72,9 +72,9 @@ mod tests {
 
         assert_eq!(cycles, 4);
         assert_eq!(cpu.a, 0x00);
-        assert_eq!(cpu.flag_z(), true);
-        assert_eq!(cpu.flag_n(), false);
-        assert_eq!(cpu.flag_h(), true);
+        assert!(cpu.flag_z());
+        assert!(!cpu.flag_n());
+        assert!(cpu.flag_h());
     }
 
     #[test]
@@ -88,9 +88,9 @@ mod tests {
 
         assert_eq!(cycles, 4);
         assert_eq!(cpu.a, 0x10);
-        assert_eq!(cpu.flag_z(), false);
-        assert_eq!(cpu.flag_n(), false);
-        assert_eq!(cpu.flag_h(), true);
+        assert!(!cpu.flag_z());
+        assert!(!cpu.flag_n());
+        assert!(cpu.flag_h());
     }
 
     #[test]
@@ -104,9 +104,9 @@ mod tests {
 
         assert_eq!(cycles, 4);
         assert_eq!(cpu.a, 0x0D);
-        assert_eq!(cpu.flag_z(), false);
-        assert_eq!(cpu.flag_n(), true);
-        assert_eq!(cpu.flag_h(), false);
+        assert!(!cpu.flag_z());
+        assert!(cpu.flag_n());
+        assert!(!cpu.flag_h());
     }
 
     #[test]
@@ -120,9 +120,9 @@ mod tests {
 
         assert_eq!(cycles, 4);
         assert_eq!(cpu.a, 0x00);
-        assert_eq!(cpu.flag_z(), true);
-        assert_eq!(cpu.flag_n(), true);
-        assert_eq!(cpu.flag_h(), false);
+        assert!(cpu.flag_z());
+        assert!(cpu.flag_n());
+        assert!(!cpu.flag_h());
     }
 
     #[test]
@@ -136,9 +136,9 @@ mod tests {
 
         assert_eq!(cycles, 4);
         assert_eq!(cpu.a, 0x0F);
-        assert_eq!(cpu.flag_z(), false);
-        assert_eq!(cpu.flag_n(), true);
-        assert_eq!(cpu.flag_h(), true);
+        assert!(!cpu.flag_z());
+        assert!(cpu.flag_n());
+        assert!(cpu.flag_h());
     }
 
     #[test]
@@ -152,9 +152,9 @@ mod tests {
 
         assert_eq!(cycles, 4);
         assert_eq!(cpu.b, 0x0F);
-        assert_eq!(cpu.flag_z(), false);
-        assert_eq!(cpu.flag_n(), false);
-        assert_eq!(cpu.flag_h(), false);
+        assert!(!cpu.flag_z());
+        assert!(!cpu.flag_n());
+        assert!(!cpu.flag_h());
     }
 
     #[test]
@@ -168,9 +168,9 @@ mod tests {
 
         assert_eq!(cycles, 4);
         assert_eq!(cpu.b, 0x00);
-        assert_eq!(cpu.flag_z(), true);
-        assert_eq!(cpu.flag_n(), false);
-        assert_eq!(cpu.flag_h(), true);
+        assert!(cpu.flag_z());
+        assert!(!cpu.flag_n());
+        assert!(cpu.flag_h());
     }
 
     #[test]
@@ -184,9 +184,9 @@ mod tests {
 
         assert_eq!(cycles, 4);
         assert_eq!(cpu.b, 0x10);
-        assert_eq!(cpu.flag_z(), false);
-        assert_eq!(cpu.flag_n(), false);
-        assert_eq!(cpu.flag_h(), true);
+        assert!(!cpu.flag_z());
+        assert!(!cpu.flag_n());
+        assert!(cpu.flag_h());
     }
 
     #[test]
@@ -200,9 +200,9 @@ mod tests {
 
         assert_eq!(cycles, 4);
         assert_eq!(cpu.b, 0x0D);
-        assert_eq!(cpu.flag_z(), false);
-        assert_eq!(cpu.flag_n(), true);
-        assert_eq!(cpu.flag_h(), false);
+        assert!(!cpu.flag_z());
+        assert!(cpu.flag_n());
+        assert!(!cpu.flag_h());
     }
 
     #[test]
@@ -216,9 +216,9 @@ mod tests {
 
         assert_eq!(cycles, 4);
         assert_eq!(cpu.b, 0x00);
-        assert_eq!(cpu.flag_z(), true);
-        assert_eq!(cpu.flag_n(), true);
-        assert_eq!(cpu.flag_h(), false);
+        assert!(cpu.flag_z());
+        assert!(cpu.flag_n());
+        assert!(!cpu.flag_h());
     }
 
     #[test]
@@ -232,9 +232,9 @@ mod tests {
 
         assert_eq!(cycles, 4);
         assert_eq!(cpu.b, 0x0F);
-        assert_eq!(cpu.flag_z(), false);
-        assert_eq!(cpu.flag_n(), true);
-        assert_eq!(cpu.flag_h(), true);
+        assert!(!cpu.flag_z());
+        assert!(cpu.flag_n());
+        assert!(cpu.flag_h());
     }
 
     #[test]
@@ -265,10 +265,10 @@ mod tests {
 
         assert_eq!(cycles, 4);
         assert_eq!(cpu.a, 0x03);
-        assert_eq!(cpu.flag_z(), false);
-        assert_eq!(cpu.flag_n(), false);
-        assert_eq!(cpu.flag_h(), false);
-        assert_eq!(cpu.flag_c(), false);
+        assert!(!cpu.flag_z());
+        assert!(!cpu.flag_n());
+        assert!(!cpu.flag_h());
+        assert!(!cpu.flag_c());
     }
 
     #[test]
@@ -283,10 +283,10 @@ mod tests {
 
         assert_eq!(cycles, 4);
         assert_eq!(cpu.a, 0x00);
-        assert_eq!(cpu.flag_z(), true);
-        assert_eq!(cpu.flag_n(), false);
-        assert_eq!(cpu.flag_h(), false);
-        assert_eq!(cpu.flag_c(), false);
+        assert!(cpu.flag_z());
+        assert!(!cpu.flag_n());
+        assert!(!cpu.flag_h());
+        assert!(!cpu.flag_c());
     }
 
     #[test]
@@ -301,10 +301,10 @@ mod tests {
 
         assert_eq!(cycles, 4);
         assert_eq!(cpu.a, 0x10);
-        assert_eq!(cpu.flag_z(), false);
-        assert_eq!(cpu.flag_n(), false);
-        assert_eq!(cpu.flag_h(), true);
-        assert_eq!(cpu.flag_c(), false);
+        assert!(!cpu.flag_z());
+        assert!(!cpu.flag_n());
+        assert!(cpu.flag_h());
+        assert!(!cpu.flag_c());
     }
 
     #[test]
@@ -319,10 +319,10 @@ mod tests {
 
         assert_eq!(cycles, 4);
         assert_eq!(cpu.a, 0x00);
-        assert_eq!(cpu.flag_z(), true);
-        assert_eq!(cpu.flag_n(), false);
-        assert_eq!(cpu.flag_h(), false);
-        assert_eq!(cpu.flag_c(), true);
+        assert!(cpu.flag_z());
+        assert!(!cpu.flag_n());
+        assert!(!cpu.flag_h());
+        assert!(cpu.flag_c());
     }
 
     #[test]
@@ -337,10 +337,10 @@ mod tests {
 
         assert_eq!(cycles, 4);
         assert_eq!(cpu.a, 0x0A);
-        assert_eq!(cpu.flag_z(), false);
-        assert_eq!(cpu.flag_n(), true);
-        assert_eq!(cpu.flag_h(), false);
-        assert_eq!(cpu.flag_c(), false);
+        assert!(!cpu.flag_z());
+        assert!(cpu.flag_n());
+        assert!(!cpu.flag_h());
+        assert!(!cpu.flag_c());
     }
 
     #[test]
@@ -355,10 +355,10 @@ mod tests {
 
         assert_eq!(cycles, 4);
         assert_eq!(cpu.a, 0x00);
-        assert_eq!(cpu.flag_z(), true);
-        assert_eq!(cpu.flag_n(), true);
-        assert_eq!(cpu.flag_h(), false);
-        assert_eq!(cpu.flag_c(), false);
+        assert!(cpu.flag_z());
+        assert!(cpu.flag_n());
+        assert!(!cpu.flag_h());
+        assert!(!cpu.flag_c());
     }
 
     #[test]
@@ -373,10 +373,10 @@ mod tests {
 
         assert_eq!(cycles, 4);
         assert_eq!(cpu.a, 0x0F);
-        assert_eq!(cpu.flag_z(), false);
-        assert_eq!(cpu.flag_n(), true);
-        assert_eq!(cpu.flag_h(), true);
-        assert_eq!(cpu.flag_c(), false);
+        assert!(!cpu.flag_z());
+        assert!(cpu.flag_n());
+        assert!(cpu.flag_h());
+        assert!(!cpu.flag_c());
     }
 
     #[test]
@@ -391,10 +391,10 @@ mod tests {
 
         assert_eq!(cycles, 4);
         assert_eq!(cpu.a, 0xF5);
-        assert_eq!(cpu.flag_z(), false);
-        assert_eq!(cpu.flag_n(), true);
-        assert_eq!(cpu.flag_h(), false);
-        assert_eq!(cpu.flag_c(), true);
+        assert!(!cpu.flag_z());
+        assert!(cpu.flag_n());
+        assert!(!cpu.flag_h());
+        assert!(cpu.flag_c());
     }
 
     #[test]
@@ -534,10 +534,10 @@ mod tests {
 
         assert_eq!(cycles, 4);
         assert_eq!(cpu.a, 0x15);
-        assert_eq!(cpu.flag_z(), false);
-        assert_eq!(cpu.flag_n(), false);
-        assert_eq!(cpu.flag_h(), false);
-        assert_eq!(cpu.flag_c(), false);
+        assert!(!cpu.flag_z());
+        assert!(!cpu.flag_n());
+        assert!(!cpu.flag_h());
+        assert!(!cpu.flag_c());
     }
 
     #[test]
@@ -552,10 +552,10 @@ mod tests {
 
         assert_eq!(cycles, 4);
         assert_eq!(cpu.a, 0x00);
-        assert_eq!(cpu.flag_z(), true);
-        assert_eq!(cpu.flag_n(), false);
-        assert_eq!(cpu.flag_h(), true);
-        assert_eq!(cpu.flag_c(), true);
+        assert!(cpu.flag_z());
+        assert!(!cpu.flag_n());
+        assert!(cpu.flag_h());
+        assert!(cpu.flag_c());
     }
 
     #[test]
@@ -571,10 +571,10 @@ mod tests {
 
         assert_eq!(cycles, 4);
         assert_eq!(cpu.a, 0x15);
-        assert_eq!(cpu.flag_z(), false);
-        assert_eq!(cpu.flag_n(), false);
-        assert_eq!(cpu.flag_h(), false);
-        assert_eq!(cpu.flag_c(), false);
+        assert!(!cpu.flag_z());
+        assert!(!cpu.flag_n());
+        assert!(!cpu.flag_h());
+        assert!(!cpu.flag_c());
     }
 
     #[test]
@@ -590,10 +590,10 @@ mod tests {
 
         assert_eq!(cycles, 4);
         assert_eq!(cpu.a, 0x27);
-        assert_eq!(cpu.flag_z(), false);
-        assert_eq!(cpu.flag_n(), false);
-        assert_eq!(cpu.flag_h(), false);
-        assert_eq!(cpu.flag_c(), false);
+        assert!(!cpu.flag_z());
+        assert!(!cpu.flag_n());
+        assert!(!cpu.flag_h());
+        assert!(!cpu.flag_c());
     }
 
     #[test]
@@ -608,10 +608,10 @@ mod tests {
 
         assert_eq!(cycles, 4);
         assert_eq!(cpu.a, 0x10);
-        assert_eq!(cpu.flag_z(), false);
-        assert_eq!(cpu.flag_n(), true);
-        assert_eq!(cpu.flag_h(), false);
-        assert_eq!(cpu.flag_c(), false);
+        assert!(!cpu.flag_z());
+        assert!(cpu.flag_n());
+        assert!(!cpu.flag_h());
+        assert!(!cpu.flag_c());
     }
 
     #[test]
@@ -626,10 +626,10 @@ mod tests {
 
         assert_eq!(cycles, 4);
         assert_eq!(cpu.a, 0xEF);
-        assert_eq!(cpu.flag_z(), false);
-        assert_eq!(cpu.flag_n(), true);
-        assert_eq!(cpu.flag_h(), true);
-        assert_eq!(cpu.flag_c(), true);
+        assert!(!cpu.flag_z());
+        assert!(cpu.flag_n());
+        assert!(cpu.flag_h());
+        assert!(cpu.flag_c());
     }
 
     #[test]
@@ -645,10 +645,10 @@ mod tests {
 
         assert_eq!(cycles, 4);
         assert_eq!(cpu.a, 0x0E);
-        assert_eq!(cpu.flag_z(), false);
-        assert_eq!(cpu.flag_n(), true);
-        assert_eq!(cpu.flag_h(), true);
-        assert_eq!(cpu.flag_c(), false);
+        assert!(!cpu.flag_z());
+        assert!(cpu.flag_n());
+        assert!(cpu.flag_h());
+        assert!(!cpu.flag_c());
     }
 
     #[test]
@@ -664,10 +664,10 @@ mod tests {
 
         assert_eq!(cycles, 4);
         assert_eq!(cpu.a, 0x1A);
-        assert_eq!(cpu.flag_z(), false);
-        assert_eq!(cpu.flag_n(), true);
-        assert_eq!(cpu.flag_h(), true);
-        assert_eq!(cpu.flag_c(), false);
+        assert!(!cpu.flag_z());
+        assert!(cpu.flag_n());
+        assert!(cpu.flag_h());
+        assert!(!cpu.flag_c());
     }
 
     #[test]
@@ -682,10 +682,10 @@ mod tests {
 
         assert_eq!(cycles, 4);
         assert_eq!(cpu.a, 0x00);
-        assert_eq!(cpu.flag_z(), true);
-        assert_eq!(cpu.flag_n(), false);
-        assert_eq!(cpu.flag_h(), true);
-        assert_eq!(cpu.flag_c(), false);
+        assert!(cpu.flag_z());
+        assert!(!cpu.flag_n());
+        assert!(cpu.flag_h());
+        assert!(!cpu.flag_c());
     }
 
     #[test]
@@ -700,10 +700,10 @@ mod tests {
 
         assert_eq!(cycles, 4);
         assert_eq!(cpu.a, 0xFF);
-        assert_eq!(cpu.flag_z(), false);
-        assert_eq!(cpu.flag_n(), false);
-        assert_eq!(cpu.flag_h(), false);
-        assert_eq!(cpu.flag_c(), false);
+        assert!(!cpu.flag_z());
+        assert!(!cpu.flag_n());
+        assert!(!cpu.flag_h());
+        assert!(!cpu.flag_c());
     }
 
     #[test]
@@ -717,10 +717,10 @@ mod tests {
 
         assert_eq!(cycles, 4);
         assert_eq!(cpu.a, 0x00);
-        assert_eq!(cpu.flag_z(), true);
-        assert_eq!(cpu.flag_n(), false);
-        assert_eq!(cpu.flag_h(), false);
-        assert_eq!(cpu.flag_c(), false);
+        assert!(cpu.flag_z());
+        assert!(!cpu.flag_n());
+        assert!(!cpu.flag_h());
+        assert!(!cpu.flag_c());
     }
 
     #[test]
@@ -735,10 +735,10 @@ mod tests {
 
         assert_eq!(cycles, 4);
         assert_eq!(cpu.a, 0xFF);
-        assert_eq!(cpu.flag_z(), false);
-        assert_eq!(cpu.flag_n(), false);
-        assert_eq!(cpu.flag_h(), false);
-        assert_eq!(cpu.flag_c(), false);
+        assert!(!cpu.flag_z());
+        assert!(!cpu.flag_n());
+        assert!(!cpu.flag_h());
+        assert!(!cpu.flag_c());
     }
 
     #[test]
@@ -754,10 +754,10 @@ mod tests {
 
         assert_eq!(cycles, 4);
         assert_eq!(cpu.a, 0x42);
-        assert_eq!(cpu.flag_z(), true);
-        assert_eq!(cpu.flag_n(), true);
-        assert_eq!(cpu.flag_h(), false);
-        assert_eq!(cpu.flag_c(), false);
+        assert!(cpu.flag_z());
+        assert!(cpu.flag_n());
+        assert!(!cpu.flag_h());
+        assert!(!cpu.flag_c());
     }
     #[test]
     fn test_cp_a_r() {
@@ -771,10 +771,10 @@ mod tests {
 
         assert_eq!(cycles, 4);
         assert_eq!(cpu.a, 0x42);
-        assert_eq!(cpu.flag_z(), false);
-        assert_eq!(cpu.flag_n(), true);
-        assert_eq!(cpu.flag_h(), false);
-        assert_eq!(cpu.flag_c(), false);
+        assert!(!cpu.flag_z());
+        assert!(cpu.flag_n());
+        assert!(!cpu.flag_h());
+        assert!(!cpu.flag_c());
     }
 
     #[test]
@@ -1204,7 +1204,7 @@ mod tests {
         let cycles = cpu.execute_instruction(0xF3, &mut bus);
 
         assert_eq!(cycles, 4);
-        assert_eq!(cpu.interrupts_enabled(), false)
+        assert!(!cpu.interrupts_enabled())
     }
 
     #[test]
@@ -1215,7 +1215,7 @@ mod tests {
         let cycles = cpu.execute_instruction(0xFB, &mut bus);
 
         assert_eq!(cycles, 4);
-        assert_eq!(cpu.interrupts_enabled(), true)
+        assert!(cpu.interrupts_enabled())
     }
 
     #[test]
@@ -1249,10 +1249,10 @@ mod tests {
 
         assert_eq!(cycles, 8);
         assert_eq!(cpu.a, 0x0B);
-        assert_eq!(cpu.flag_z(), false);
-        assert_eq!(cpu.flag_n(), true);
-        assert_eq!(cpu.flag_h(), true);
-        assert_eq!(cpu.flag_c(), false);
+        assert!(!cpu.flag_z());
+        assert!(cpu.flag_n());
+        assert!(cpu.flag_h());
+        assert!(!cpu.flag_c());
     }
 
     #[test]
@@ -1270,10 +1270,10 @@ mod tests {
         assert_eq!(cycles, 8);
         assert_eq!(cpu.a, 0x10);
         assert_eq!(cpu.pc, 0x101);
-        assert_eq!(cpu.flag_z(), false);
-        assert_eq!(cpu.flag_n(), true);
-        assert_eq!(cpu.flag_h(), true);
-        assert_eq!(cpu.flag_c(), false);
+        assert!(!cpu.flag_z());
+        assert!(cpu.flag_n());
+        assert!(cpu.flag_h());
+        assert!(!cpu.flag_c());
     }
 
     #[test]
@@ -1322,10 +1322,10 @@ mod tests {
 
         assert_eq!(cycles, 4);
         assert_eq!(cpu.a, 0x1E);
-        assert_eq!(cpu.flag_z(), false);
-        assert_eq!(cpu.flag_n(), false);
-        assert_eq!(cpu.flag_h(), false);
-        assert_eq!(cpu.flag_c(), false);
+        assert!(!cpu.flag_z());
+        assert!(!cpu.flag_n());
+        assert!(!cpu.flag_h());
+        assert!(!cpu.flag_c());
     }
 
     #[test]
@@ -1339,10 +1339,10 @@ mod tests {
 
         assert_eq!(cycles, 4);
         assert_eq!(cpu.a, 0xEB);
-        assert_eq!(cpu.flag_z(), false);
-        assert_eq!(cpu.flag_n(), false);
-        assert_eq!(cpu.flag_h(), false);
-        assert_eq!(cpu.flag_c(), true);
+        assert!(!cpu.flag_z());
+        assert!(!cpu.flag_n());
+        assert!(!cpu.flag_h());
+        assert!(cpu.flag_c());
     }
 
     #[test]
@@ -1356,10 +1356,10 @@ mod tests {
 
         assert_eq!(cycles, 4);
         assert_eq!(cpu.a, 0x6B);
-        assert_eq!(cpu.flag_z(), false);
-        assert_eq!(cpu.flag_n(), false);
-        assert_eq!(cpu.flag_h(), false);
-        assert_eq!(cpu.flag_c(), false);
+        assert!(!cpu.flag_z());
+        assert!(!cpu.flag_n());
+        assert!(!cpu.flag_h());
+        assert!(!cpu.flag_c());
     }
 
     #[test]
@@ -1373,10 +1373,10 @@ mod tests {
 
         assert_eq!(cycles, 4);
         assert_eq!(cpu.a, 0xFA);
-        assert_eq!(cpu.flag_z(), false);
-        assert_eq!(cpu.flag_n(), false);
-        assert_eq!(cpu.flag_h(), false);
-        assert_eq!(cpu.flag_c(), true);
+        assert!(!cpu.flag_z());
+        assert!(!cpu.flag_n());
+        assert!(!cpu.flag_h());
+        assert!(cpu.flag_c());
     }
 
     #[test]
