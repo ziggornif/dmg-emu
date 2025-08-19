@@ -2,6 +2,8 @@
 
 A gameboy emulator project
 
+![screenshot](./resources/screenshot.png)
+
 ## Prerequisites
 
 This emulator currently works only with a Tetris ROM file. You must place a Tetris ROM file named `tetris.gb` in the `resources/` directory before running the emulator.
