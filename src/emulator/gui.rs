@@ -5,6 +5,7 @@ use eframe::egui;
 use egui::{ColorImage, Key, TextureHandle, Vec2};
 use std::collections::VecDeque;
 use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 
 pub struct GameBoyApp {
     gameboy: Gameboy,
@@ -12,10 +13,11 @@ pub struct GameBoyApp {
     scale: f32,
     show_debug: bool,
     paused: bool,
-    frame_time: std::time::Instant,
+    last_update: Instant,
+    frame_accumulator: Duration,
     fps: f32,
     fps_counter: u32,
-    fps_timer: std::time::Instant,
+    fps_timer: Instant,
     audio_buffer: Arc<Mutex<VecDeque<(f32, f32)>>>,
     _audio_stream: Option<cpal::Stream>,
     muted: bool,
@@ -50,10 +52,11 @@ impl GameBoyApp {
             scale: 3.0,
             show_debug: false,
             paused: false,
-            frame_time: std::time::Instant::now(),
+            last_update: Instant::now(),
+            frame_accumulator: Duration::ZERO,
             fps: 0.0,
             fps_counter: 0,
-            fps_timer: std::time::Instant::now(),
+            fps_timer: Instant::now(),
             audio_buffer,
             _audio_stream: audio_stream,
             muted: false,
@@ -190,22 +193,39 @@ impl eframe::App for GameBoyApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         self.handle_input(ctx);
 
-        if !self.paused && self.frame_time.elapsed().as_millis() >= 8 {
-            for _ in 0..2 {
+        if !self.paused {
+            // Game Boy frame duration: ~16.74ms (59.7275 Hz)
+            const FRAME_DURATION: Duration = Duration::from_nanos(16_742_706);
+            // Cap to avoid spiral of death if emulation falls behind
+            const MAX_CATCHUP_FRAMES: u32 = 4;
+
+            let now = Instant::now();
+            self.frame_accumulator += now - self.last_update;
+            self.last_update = now;
+
+            let mut frames_run = 0u32;
+            while self.frame_accumulator >= FRAME_DURATION && frames_run < MAX_CATCHUP_FRAMES {
                 self.gameboy.run_frame();
+                self.frame_accumulator -= FRAME_DURATION;
+                frames_run += 1;
+                self.update_fps();
             }
-            self.frame_time = std::time::Instant::now();
-            self.update_fps();
+
+            // If still behind after max catchup, reset to avoid permanent lag
+            if self.frame_accumulator >= FRAME_DURATION {
+                self.frame_accumulator = Duration::ZERO;
+            }
 
             // Drain APU samples into shared audio buffer
-            let samples = self.gameboy.take_audio_samples();
-            if !self.muted && !samples.is_empty()
-                && let Ok(mut buf) = self.audio_buffer.lock()
-            {
-                // Cap buffer to avoid unbounded growth (~1 second of audio)
-                const MAX_BUFFER: usize = 44100;
-                let available = MAX_BUFFER.saturating_sub(buf.len());
-                buf.extend(samples.into_iter().take(available));
+            if frames_run > 0 {
+                let samples = self.gameboy.take_audio_samples();
+                if !self.muted && !samples.is_empty()
+                    && let Ok(mut buf) = self.audio_buffer.lock()
+                {
+                    const MAX_BUFFER: usize = 44100;
+                    let available = MAX_BUFFER.saturating_sub(buf.len());
+                    buf.extend(samples.into_iter().take(available));
+                }
             }
         }
 
