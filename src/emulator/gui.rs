@@ -1,7 +1,10 @@
 use crate::emulator::gameboy::Gameboy;
 use crate::emulator::joypad::JoypadButton;
+use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use eframe::egui;
 use egui::{ColorImage, Key, TextureHandle, Vec2};
+use std::collections::VecDeque;
+use std::sync::{Arc, Mutex};
 
 pub struct GameBoyApp {
     gameboy: Gameboy,
@@ -13,6 +16,9 @@ pub struct GameBoyApp {
     fps: f32,
     fps_counter: u32,
     fps_timer: std::time::Instant,
+    audio_buffer: Arc<Mutex<VecDeque<(f32, f32)>>>,
+    _audio_stream: Option<cpal::Stream>,
+    muted: bool,
 }
 
 impl GameBoyApp {
@@ -34,6 +40,10 @@ impl GameBoyApp {
             eprintln!("Impossible de charger resources/tetris.gb");
         }
 
+        let audio_buffer: Arc<Mutex<VecDeque<(f32, f32)>>> =
+            Arc::new(Mutex::new(VecDeque::new()));
+        let audio_stream = Self::init_audio_stream(Arc::clone(&audio_buffer));
+
         Self {
             gameboy,
             texture: None,
@@ -44,7 +54,60 @@ impl GameBoyApp {
             fps: 0.0,
             fps_counter: 0,
             fps_timer: std::time::Instant::now(),
+            audio_buffer,
+            _audio_stream: audio_stream,
+            muted: false,
         }
+    }
+
+    fn init_audio_stream(
+        audio_buffer: Arc<Mutex<VecDeque<(f32, f32)>>>,
+    ) -> Option<cpal::Stream> {
+        let host = cpal::default_host();
+        let device = match host.default_output_device() {
+            Some(d) => d,
+            None => {
+                eprintln!("No audio output device found");
+                return None;
+            }
+        };
+
+        let config = cpal::StreamConfig {
+            channels: 2,
+            sample_rate: cpal::SampleRate(44100),
+            buffer_size: cpal::BufferSize::Default,
+        };
+
+        let buffer = audio_buffer;
+        let stream = device
+            .build_output_stream(
+                &config,
+                move |data: &mut [f32], _: &cpal::OutputCallbackInfo| {
+                    let mut buf = buffer.lock().unwrap();
+                    for frame in data.chunks_mut(2) {
+                        if let Some((left, right)) = buf.pop_front() {
+                            frame[0] = left;
+                            frame[1] = right;
+                        } else {
+                            frame[0] = 0.0;
+                            frame[1] = 0.0;
+                        }
+                    }
+                },
+                |err| {
+                    eprintln!("Audio stream error: {}", err);
+                },
+                None,
+            )
+            .ok();
+
+        if let Some(ref s) = stream
+            && let Err(e) = s.play()
+        {
+            eprintln!("Failed to start audio stream: {}", e);
+        }
+
+        stream
     }
 
     fn update_texture(&mut self, ctx: &egui::Context) {
@@ -108,6 +171,9 @@ impl GameBoyApp {
         if input.key_pressed(Key::F1) {
             self.show_debug = !self.show_debug;
         }
+        if input.key_pressed(Key::M) {
+            self.muted = !self.muted;
+        }
     }
 
     fn update_fps(&mut self) {
@@ -130,6 +196,17 @@ impl eframe::App for GameBoyApp {
             }
             self.frame_time = std::time::Instant::now();
             self.update_fps();
+
+            // Drain APU samples into shared audio buffer
+            let samples = self.gameboy.take_audio_samples();
+            if !self.muted && !samples.is_empty()
+                && let Ok(mut buf) = self.audio_buffer.lock()
+            {
+                // Cap buffer to avoid unbounded growth (~1 second of audio)
+                const MAX_BUFFER: usize = 44100;
+                let available = MAX_BUFFER.saturating_sub(buf.len());
+                buf.extend(samples.into_iter().take(available));
+            }
         }
 
         self.update_texture(ctx);
@@ -152,6 +229,18 @@ impl eframe::App for GameBoyApp {
 
                 ui.separator();
                 ui.label(format!("FPS: {:.1}", self.fps));
+
+                ui.separator();
+                if ui
+                    .button(if self.muted {
+                        "Unmute"
+                    } else {
+                        "Mute"
+                    })
+                    .clicked()
+                {
+                    self.muted = !self.muted;
+                }
 
                 ui.separator();
                 ui.checkbox(&mut self.show_debug, "Debug");
@@ -246,6 +335,7 @@ impl eframe::App for GameBoyApp {
                 ui.label("• Enter: Start");
                 ui.label("• C: Select");
                 ui.label("• P: Pause/Resume");
+                ui.label("• M: Mute/Unmute");
                 ui.label("• F1: Toggle Debug");
             });
 
