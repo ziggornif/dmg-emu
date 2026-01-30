@@ -316,6 +316,22 @@ impl eframe::App for GameBoyApp {
                             ));
 
                             ui.separator();
+                            ui.label("APU:");
+                            let nr52 = self.gameboy.bus.apu.read_register(0xFF26);
+                            ui.label(format!(
+                                "Power: {}",
+                                if nr52 & 0x80 != 0 { "ON" } else { "OFF" }
+                            ));
+                            ui.label(format!("NR50: 0x{:02X}  NR51: 0x{:02X}", self.gameboy.bus.apu.nr50, self.gameboy.bus.apu.nr51));
+                            ui.label(format!(
+                                "CH1:{} CH2:{} CH3:{} CH4:{}",
+                                if self.gameboy.bus.apu.channel1.enabled { "ON" } else { "OFF" },
+                                if self.gameboy.bus.apu.channel2.enabled { "ON" } else { "OFF" },
+                                if self.gameboy.bus.apu.channel3.enabled { "ON" } else { "OFF" },
+                                if self.gameboy.bus.apu.channel4.enabled { "ON" } else { "OFF" },
+                            ));
+
+                            ui.separator();
                             if ui.button("Print Terminal Screen").clicked() {
                                 println!("\n=== Debug Screen Print ===");
                                 self.gameboy.print_debug_screen();
@@ -355,6 +371,12 @@ impl eframe::App for GameBoyApp {
                 if ui.button("Print PPU State to Terminal").clicked() {
                     println!("\n=== PPU STATE DEBUG ===");
                     crate::print_ppu_state!(self.gameboy.bus.ppu);
+                    println!("======================");
+                }
+
+                if ui.button("Print APU State to Terminal").clicked() {
+                    println!("\n=== APU STATE DEBUG ===");
+                    crate::print_apu_state!(self.gameboy.bus.apu);
                     println!("======================");
                 }
 
