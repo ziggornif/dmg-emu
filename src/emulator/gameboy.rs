@@ -87,6 +87,8 @@ impl Gameboy {
 
         let vblank_interrupt = self.bus.ppu_step(cycles);
 
+        self.bus.apu_step(cycles);
+
         self.handle_interrupts(vblank_interrupt, timer_interrupt);
 
         vblank_interrupt
@@ -167,6 +169,10 @@ impl Gameboy {
         }
 
         cycles
+    }
+
+    pub fn take_audio_samples(&mut self) -> Vec<(f32, f32)> {
+        self.bus.apu.take_samples()
     }
 
     pub fn get_framebuffer(&self) -> &[[u8; 160]] {

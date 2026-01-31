@@ -13,6 +13,8 @@ jobs:
       options: --security-opt seccomp=unconfined
     steps:
     - uses: actions/checkout@v4
+    - name: Install system dependencies
+      run: apt-get update && apt-get install -y libasound2-dev
     - name: Build
       run: cargo build --verbose
     - name: Run tests

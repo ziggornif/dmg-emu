@@ -89,3 +89,17 @@ macro_rules! print_ppu_state {
         println!("  LCD Enabled: {}", $ppu.is_lcd_enabled());
     };
 }
+
+#[macro_export]
+macro_rules! print_apu_state {
+    ($apu:expr) => {
+        println!("APU State:");
+        println!("  NR50: 0x{:02X}  NR51: 0x{:02X}  NR52: 0x{:02X}", $apu.nr50, $apu.nr51, $apu.read_register(0xFF26));
+        println!("  CH1: {}  CH2: {}  CH3: {}  CH4: {}",
+            if $apu.channel1.enabled { "ON" } else { "OFF" },
+            if $apu.channel2.enabled { "ON" } else { "OFF" },
+            if $apu.channel3.enabled { "ON" } else { "OFF" },
+            if $apu.channel4.enabled { "ON" } else { "OFF" },
+        );
+    };
+}

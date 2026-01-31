@@ -1,7 +1,11 @@
 use crate::emulator::gameboy::Gameboy;
 use crate::emulator::joypad::JoypadButton;
+use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use eframe::egui;
 use egui::{ColorImage, Key, TextureHandle, Vec2};
+use std::collections::VecDeque;
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 
 pub struct GameBoyApp {
     gameboy: Gameboy,
@@ -9,10 +13,14 @@ pub struct GameBoyApp {
     scale: f32,
     show_debug: bool,
     paused: bool,
-    frame_time: std::time::Instant,
+    last_update: Instant,
+    frame_accumulator: Duration,
     fps: f32,
     fps_counter: u32,
-    fps_timer: std::time::Instant,
+    fps_timer: Instant,
+    audio_buffer: Arc<Mutex<VecDeque<(f32, f32)>>>,
+    _audio_stream: Option<cpal::Stream>,
+    muted: bool,
 }
 
 impl GameBoyApp {
@@ -34,17 +42,75 @@ impl GameBoyApp {
             eprintln!("Impossible de charger resources/tetris.gb");
         }
 
+        let audio_buffer: Arc<Mutex<VecDeque<(f32, f32)>>> =
+            Arc::new(Mutex::new(VecDeque::new()));
+        let audio_stream = Self::init_audio_stream(Arc::clone(&audio_buffer));
+
         Self {
             gameboy,
             texture: None,
             scale: 3.0,
             show_debug: false,
             paused: false,
-            frame_time: std::time::Instant::now(),
+            last_update: Instant::now(),
+            frame_accumulator: Duration::ZERO,
             fps: 0.0,
             fps_counter: 0,
-            fps_timer: std::time::Instant::now(),
+            fps_timer: Instant::now(),
+            audio_buffer,
+            _audio_stream: audio_stream,
+            muted: false,
         }
+    }
+
+    fn init_audio_stream(
+        audio_buffer: Arc<Mutex<VecDeque<(f32, f32)>>>,
+    ) -> Option<cpal::Stream> {
+        let host = cpal::default_host();
+        let device = match host.default_output_device() {
+            Some(d) => d,
+            None => {
+                eprintln!("No audio output device found");
+                return None;
+            }
+        };
+
+        let config = cpal::StreamConfig {
+            channels: 2,
+            sample_rate: cpal::SampleRate(44100),
+            buffer_size: cpal::BufferSize::Default,
+        };
+
+        let buffer = audio_buffer;
+        let stream = device
+            .build_output_stream(
+                &config,
+                move |data: &mut [f32], _: &cpal::OutputCallbackInfo| {
+                    let mut buf = buffer.lock().unwrap();
+                    for frame in data.chunks_mut(2) {
+                        if let Some((left, right)) = buf.pop_front() {
+                            frame[0] = left;
+                            frame[1] = right;
+                        } else {
+                            frame[0] = 0.0;
+                            frame[1] = 0.0;
+                        }
+                    }
+                },
+                |err| {
+                    eprintln!("Audio stream error: {}", err);
+                },
+                None,
+            )
+            .ok();
+
+        if let Some(ref s) = stream
+            && let Err(e) = s.play()
+        {
+            eprintln!("Failed to start audio stream: {}", e);
+        }
+
+        stream
     }
 
     fn update_texture(&mut self, ctx: &egui::Context) {
@@ -108,6 +174,9 @@ impl GameBoyApp {
         if input.key_pressed(Key::F1) {
             self.show_debug = !self.show_debug;
         }
+        if input.key_pressed(Key::M) {
+            self.muted = !self.muted;
+        }
     }
 
     fn update_fps(&mut self) {
@@ -124,12 +193,40 @@ impl eframe::App for GameBoyApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         self.handle_input(ctx);
 
-        if !self.paused && self.frame_time.elapsed().as_millis() >= 8 {
-            for _ in 0..2 {
+        if !self.paused {
+            // Game Boy frame duration: ~16.74ms (59.7275 Hz)
+            const FRAME_DURATION: Duration = Duration::from_nanos(16_742_706);
+            // Cap to avoid spiral of death if emulation falls behind
+            const MAX_CATCHUP_FRAMES: u32 = 4;
+
+            let now = Instant::now();
+            self.frame_accumulator += now - self.last_update;
+            self.last_update = now;
+
+            let mut frames_run = 0u32;
+            while self.frame_accumulator >= FRAME_DURATION && frames_run < MAX_CATCHUP_FRAMES {
                 self.gameboy.run_frame();
+                self.frame_accumulator -= FRAME_DURATION;
+                frames_run += 1;
+                self.update_fps();
             }
-            self.frame_time = std::time::Instant::now();
-            self.update_fps();
+
+            // If still behind after max catchup, reset to avoid permanent lag
+            if self.frame_accumulator >= FRAME_DURATION {
+                self.frame_accumulator = Duration::ZERO;
+            }
+
+            // Drain APU samples into shared audio buffer
+            if frames_run > 0 {
+                let samples = self.gameboy.take_audio_samples();
+                if !self.muted && !samples.is_empty()
+                    && let Ok(mut buf) = self.audio_buffer.lock()
+                {
+                    const MAX_BUFFER: usize = 44100;
+                    let available = MAX_BUFFER.saturating_sub(buf.len());
+                    buf.extend(samples.into_iter().take(available));
+                }
+            }
         }
 
         self.update_texture(ctx);
@@ -152,6 +249,18 @@ impl eframe::App for GameBoyApp {
 
                 ui.separator();
                 ui.label(format!("FPS: {:.1}", self.fps));
+
+                ui.separator();
+                if ui
+                    .button(if self.muted {
+                        "Unmute"
+                    } else {
+                        "Mute"
+                    })
+                    .clicked()
+                {
+                    self.muted = !self.muted;
+                }
 
                 ui.separator();
                 ui.checkbox(&mut self.show_debug, "Debug");
@@ -227,6 +336,22 @@ impl eframe::App for GameBoyApp {
                             ));
 
                             ui.separator();
+                            ui.label("APU:");
+                            let nr52 = self.gameboy.bus.apu.read_register(0xFF26);
+                            ui.label(format!(
+                                "Power: {}",
+                                if nr52 & 0x80 != 0 { "ON" } else { "OFF" }
+                            ));
+                            ui.label(format!("NR50: 0x{:02X}  NR51: 0x{:02X}", self.gameboy.bus.apu.nr50, self.gameboy.bus.apu.nr51));
+                            ui.label(format!(
+                                "CH1:{} CH2:{} CH3:{} CH4:{}",
+                                if self.gameboy.bus.apu.channel1.enabled { "ON" } else { "OFF" },
+                                if self.gameboy.bus.apu.channel2.enabled { "ON" } else { "OFF" },
+                                if self.gameboy.bus.apu.channel3.enabled { "ON" } else { "OFF" },
+                                if self.gameboy.bus.apu.channel4.enabled { "ON" } else { "OFF" },
+                            ));
+
+                            ui.separator();
                             if ui.button("Print Terminal Screen").clicked() {
                                 println!("\n=== Debug Screen Print ===");
                                 self.gameboy.print_debug_screen();
@@ -246,6 +371,7 @@ impl eframe::App for GameBoyApp {
                 ui.label("• Enter: Start");
                 ui.label("• C: Select");
                 ui.label("• P: Pause/Resume");
+                ui.label("• M: Mute/Unmute");
                 ui.label("• F1: Toggle Debug");
             });
 
@@ -265,6 +391,12 @@ impl eframe::App for GameBoyApp {
                 if ui.button("Print PPU State to Terminal").clicked() {
                     println!("\n=== PPU STATE DEBUG ===");
                     crate::print_ppu_state!(self.gameboy.bus.ppu);
+                    println!("======================");
+                }
+
+                if ui.button("Print APU State to Terminal").clicked() {
+                    println!("\n=== APU STATE DEBUG ===");
+                    crate::print_apu_state!(self.gameboy.bus.apu);
                     println!("======================");
                 }
 

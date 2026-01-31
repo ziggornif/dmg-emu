@@ -1,6 +1,6 @@
 use crate::debug;
 use crate::emulator::{
-    joypad::Joypad, joypad::JoypadButton, memory::Memory, ppu::PPU, timer::Timer,
+    apu::APU, joypad::Joypad, joypad::JoypadButton, memory::Memory, ppu::PPU, timer::Timer,
 };
 
 #[derive(Debug, Clone)]
@@ -9,6 +9,7 @@ pub struct Bus {
     pub ppu: PPU,
     pub timer: Timer,
     pub joypad: Joypad,
+    pub apu: APU,
 }
 
 impl Bus {
@@ -18,6 +19,7 @@ impl Bus {
             ppu: PPU::new(),
             timer: Timer::new(),
             joypad: Joypad::new(),
+            apu: APU::new(),
         }
     }
 
@@ -25,6 +27,8 @@ impl Bus {
         match address {
             0xFF04..=0xFF07 => self.timer.read_register(address),
             0xFF00 => self.joypad.read_register(),
+            0xFF10..=0xFF26 => self.apu.read_register(address),
+            0xFF30..=0xFF3F => self.apu.read_register(address),
             0xFF46 => 0xFF, // DMA register is always 0xFF
             0xFF40..=0xFF4B => self.ppu.read_register(address),
             0x8000..=0x9FFF => {
@@ -69,6 +73,8 @@ impl Bus {
                 }
                 self.memory.write_byte(address, value);
             }
+            0xFF10..=0xFF26 => self.apu.write_register(address, value),
+            0xFF30..=0xFF3F => self.apu.write_register(address, value),
             0xFF46 => {
                 // DMA Transfer
                 self.perform_dma_transfer(value);
@@ -131,6 +137,10 @@ impl Bus {
 
     pub fn ppu_step(&mut self, cpu_cycles: u8) -> bool {
         self.ppu.step(cpu_cycles, &self.memory)
+    }
+
+    pub fn apu_step(&mut self, cpu_cycles: u8) {
+        self.apu.step(cpu_cycles);
     }
 }
 
