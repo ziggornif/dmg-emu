@@ -42,8 +42,7 @@ impl GameBoyApp {
             eprintln!("Impossible de charger resources/tetris.gb");
         }
 
-        let audio_buffer: Arc<Mutex<VecDeque<(f32, f32)>>> =
-            Arc::new(Mutex::new(VecDeque::new()));
+        let audio_buffer: Arc<Mutex<VecDeque<(f32, f32)>>> = Arc::new(Mutex::new(VecDeque::new()));
         let audio_stream = Self::init_audio_stream(Arc::clone(&audio_buffer));
 
         Self {
@@ -63,9 +62,7 @@ impl GameBoyApp {
         }
     }
 
-    fn init_audio_stream(
-        audio_buffer: Arc<Mutex<VecDeque<(f32, f32)>>>,
-    ) -> Option<cpal::Stream> {
+    fn init_audio_stream(audio_buffer: Arc<Mutex<VecDeque<(f32, f32)>>>) -> Option<cpal::Stream> {
         let host = cpal::default_host();
         let device = match host.default_output_device() {
             Some(d) => d,
@@ -77,7 +74,7 @@ impl GameBoyApp {
 
         let config = cpal::StreamConfig {
             channels: 2,
-            sample_rate: cpal::SampleRate(44100),
+            sample_rate: 44100,
             buffer_size: cpal::BufferSize::Default,
         };
 
@@ -219,7 +216,8 @@ impl eframe::App for GameBoyApp {
             // Drain APU samples into shared audio buffer
             if frames_run > 0 {
                 let samples = self.gameboy.take_audio_samples();
-                if !self.muted && !samples.is_empty()
+                if !self.muted
+                    && !samples.is_empty()
                     && let Ok(mut buf) = self.audio_buffer.lock()
                 {
                     const MAX_BUFFER: usize = 44100;
@@ -252,11 +250,7 @@ impl eframe::App for GameBoyApp {
 
                 ui.separator();
                 if ui
-                    .button(if self.muted {
-                        "Unmute"
-                    } else {
-                        "Mute"
-                    })
+                    .button(if self.muted { "Unmute" } else { "Mute" })
                     .clicked()
                 {
                     self.muted = !self.muted;
@@ -342,13 +336,32 @@ impl eframe::App for GameBoyApp {
                                 "Power: {}",
                                 if nr52 & 0x80 != 0 { "ON" } else { "OFF" }
                             ));
-                            ui.label(format!("NR50: 0x{:02X}  NR51: 0x{:02X}", self.gameboy.bus.apu.nr50, self.gameboy.bus.apu.nr51));
+                            ui.label(format!(
+                                "NR50: 0x{:02X}  NR51: 0x{:02X}",
+                                self.gameboy.bus.apu.nr50, self.gameboy.bus.apu.nr51
+                            ));
                             ui.label(format!(
                                 "CH1:{} CH2:{} CH3:{} CH4:{}",
-                                if self.gameboy.bus.apu.channel1.enabled { "ON" } else { "OFF" },
-                                if self.gameboy.bus.apu.channel2.enabled { "ON" } else { "OFF" },
-                                if self.gameboy.bus.apu.channel3.enabled { "ON" } else { "OFF" },
-                                if self.gameboy.bus.apu.channel4.enabled { "ON" } else { "OFF" },
+                                if self.gameboy.bus.apu.channel1.enabled {
+                                    "ON"
+                                } else {
+                                    "OFF"
+                                },
+                                if self.gameboy.bus.apu.channel2.enabled {
+                                    "ON"
+                                } else {
+                                    "OFF"
+                                },
+                                if self.gameboy.bus.apu.channel3.enabled {
+                                    "ON"
+                                } else {
+                                    "OFF"
+                                },
+                                if self.gameboy.bus.apu.channel4.enabled {
+                                    "ON"
+                                } else {
+                                    "OFF"
+                                },
                             ));
 
                             ui.separator();

@@ -691,7 +691,7 @@ impl APU {
             0xFF1E => self.channel3.nr4 | NR34_READ_MASK,
 
             // Channel 4 registers
-            0xFF1F => 0xFF, // unused
+            0xFF1F => 0xFF,           // unused
             0xFF20 => NR41_READ_MASK, // write-only
             0xFF21 => self.channel4.nr2 | NR42_READ_MASK,
             0xFF22 => self.channel4.nr3 | NR43_READ_MASK,

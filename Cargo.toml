@@ -10,6 +10,6 @@ name = "emulator"
 opt-level = 0
 
 [dependencies]
-cpal = "0.15"
-eframe = "0.32.0"
-egui = "0.32.0"
+cpal = "0.17.1"
+eframe = "0.33.3"
+egui = "0.33.3"
