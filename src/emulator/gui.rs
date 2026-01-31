@@ -231,7 +231,7 @@ impl eframe::App for GameBoyApp {
 
         egui::CentralPanel::default().show(ctx, |ui| {
             ui.horizontal(|ui| {
-                ui.heading("🕹️ Game Boy Emulator");
+                ui.heading("DMG-EMU - Game Boy Emulator");
                 ui.separator();
 
                 if ui
